@@ -23,6 +23,7 @@
                 error: null,
                 pagination: {},
                 currentPage: 1,
+                searchTerm: '', // Added for search functionality
                 filters: {
                     priceRange: [0, 15000],
                     brands: [],
@@ -37,6 +38,9 @@
                     // Build query parameters
                     const params = new URLSearchParams();
                     params.append('page', page);
+                    if (this.searchTerm.trim() !== '') {
+                        params.append('search', this.searchTerm.trim());
+                    }
                     params.append('min_price', this.filters.priceRange[0]);
                     params.append('max_price', this.filters.priceRange[1]);
                     params.append('sort', this.filters.sortBy);
@@ -96,9 +100,10 @@
                         seasons: [],
                         sortBy: 'price_low_to_high'
                     };
+                    this.searchTerm = ''; // Clear search term as well
                     this.applyFilters();
                 }
-            }" 
+            }"
             x-init="fetchPerfumes()">
 
             <div class="flex flex-col lg:flex-row gap-8">
@@ -183,18 +188,34 @@
                 <div class="flex-1">
                     <!-- Results Header -->
                     <div class="bg-white/60 backdrop-blur-lg rounded-2xl p-6 mb-8 border border-white/30 shadow-lg">
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                            <div>
-                                <h2 class="text-2xl font-bold text-gray-800">
-                                    <span x-text="!isLoading && perfumes ? perfumes.length : '0'"></span> Perfumes Found
-                                </h2>
-                                <p class="text-gray-600 mt-1">Discover your perfect scent</p>
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                            <!-- Search Input -->
+                            <div class="relative flex-grow md:flex-grow-0 md:w-72">
+                                <input type="text"
+                                       x-model.debounce.500ms="searchTerm"
+                                       @input="fetchPerfumes(1)"
+                                       placeholder="Search name or brand..."
+                                       class="w-full bg-white/90 border border-gray-200 rounded-xl px-4 py-3 pl-10 text-sm focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition-all"
+                                >
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                                    </svg>
+                                </div>
                             </div>
-                            
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm font-medium text-gray-700">Sort by:</span>
-                                <select x-model="filters.sortBy" @change="applyFilters()" 
-                                        class="bg-white/90 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition-all">
+
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-grow">
+                                <div>
+                                    <h2 class="text-2xl font-bold text-gray-800">
+                                        <span x-text="pagination.total || '0'"></span> Perfumes Found
+                                    </h2>
+                                    <p class="text-gray-600 mt-1 text-sm sm:text-base">Discover your perfect scent</p>
+                                </div>
+                                
+                                <div class="flex items-center gap-3">
+                                    <span class="text-sm font-medium text-gray-700">Sort by:</span>
+                                    <select x-model="filters.sortBy" @change="applyFilters()"
+                                            class="bg-white/90 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:border-pink-400 focus:ring-2 focus:ring-pink-200 transition-all">
                                     <option value="price_low_to_high">Price: Low to High</option>
                                     <option value="price_high_to_low">Price: High to Low</option>
                                     <option value="name_asc">Name: A-Z</option>

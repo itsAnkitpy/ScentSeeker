@@ -8,6 +8,7 @@ use App\Http\Requests\UpdatePerfumeRequest;
 use App\Http\Resources\PerfumeResource;
 use App\Http\Resources\PriceResource;
 use App\Models\Perfume;
+use Illuminate\Http\Request; // Added for request injection
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response; // Reverted to Illuminate\Http\Response
 
@@ -16,9 +17,19 @@ class PerfumeController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(): AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
-        return PerfumeResource::collection(Perfume::paginate(15));
+        $query = Perfume::query();
+
+        if ($request->has('search')) {
+            $searchTerm = $request->input('search');
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('brand', 'like', '%' . $searchTerm . '%');
+            });
+        }
+
+        return PerfumeResource::collection($query->paginate(15)->withQueryString());
     }
 
     /**

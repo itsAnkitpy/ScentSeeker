@@ -52,7 +52,7 @@ Based on `project.md`.
     *   `[x]` Implement client-side interactivity and dynamic updates using **Alpine.js**, fetching data from Laravel backend APIs where necessary. (Demonstrated in welcome page for perfume listing, and in auth forms)
     *   `[x]` Style the frontend using **Tailwind CSS**. (Setup and basic styling applied)
     *   `[x]` Ensure frontend components (Blade partials with Alpine.js) effectively consume data from Laravel API endpoints. (Demonstrated)
-    *   `[ ]` Implement basic search functionality on the frontend (Blade views with Alpine.js components) that interacts with the Laravel backend API.
+    *   `[x]` Implement basic search functionality on the frontend (Blade views with Alpine.js components) that interacts with the Laravel backend API.
 
 5.  **User Authentication (Basic - Laravel Sanctum):**
     *   `[x]` Backend: Implement user registration (`POST /api/v1/register`) and login (`POST /api/v1/login`) endpoints using Laravel.
