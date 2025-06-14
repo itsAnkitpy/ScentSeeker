@@ -30,7 +30,10 @@ class StagingProcessorService
         $pricesUpdated = 0;
         $failedCount = 0;
         $now = Carbon::now();
-
+    
+        // To store all processed production price IDs for each seller-perfume combination in the batch
+        $batchProcessedPriceIds = [];
+    
         $query = StagingPerfume::where('processing_status', 'new')
                     ->where('validation_status', 'pending'); // Or a 'validated' status if you add a separate validation step
 
@@ -205,7 +208,16 @@ class StagingProcessorService
                         $newOrUpdatedPrice = Price::create($priceData);
                         $pricesCreated++;
                     }
-                    $processedProductionPriceIds[] = $newOrUpdatedPrice->id; // Track processed price ID
+                    $processedProductionPriceIds[] = $newOrUpdatedPrice->id; // Track processed price ID for current StagingPerfume
+                
+                    // Accumulate into batch-wide tracker
+                    if (!isset($batchProcessedPriceIds[$sellerId])) {
+                        $batchProcessedPriceIds[$sellerId] = [];
+                    }
+                    if (!isset($batchProcessedPriceIds[$sellerId][$perfume->id])) {
+                        $batchProcessedPriceIds[$sellerId][$perfume->id] = [];
+                    }
+                    $batchProcessedPriceIds[$sellerId][$perfume->id][] = $newOrUpdatedPrice->id;
                     
                     $stagedPrice->matched_production_perfume_id = $perfume->id;
                     $stagedPrice->matched_production_price_id = $newOrUpdatedPrice->id;
@@ -214,25 +226,11 @@ class StagingProcessorService
                     $stagedPrice->processed_at = $now;
                     $stagedPrice->save();
                 }
-
-                // After processing all staging prices, identify and deactivate outdated production prices for this perfume and seller
-                $existingProductionPricesForSeller = Price::where('perfume_id', $perfume->id)
-                                                       ->where('seller_id', $sellerId)
-                                                       ->get();
-
-                foreach ($existingProductionPricesForSeller as $existingProdPrice) {
-                    if (!in_array($existingProdPrice->id, $processedProductionPriceIds)) {
-                        // This price exists in production for this perfume/seller but was not in the current sheet
-                        $existingProdPrice->update([
-                            'stock_status' => 'Out of Stock',
-                            'last_updated' => $now,
-                        ]);
-                        // Log::info("Deactivated outdated price ID {$existingProdPrice->id} for perfume ID {$perfume->id}, seller ID {$sellerId}");
-                    }
-                }
-
-                $stagedPerfume->processing_status = 'processed';
-                $stagedPerfume->validation_status = 'success'; // If all prices processed successfully
+                
+                                // Deactivation logic moved to after processing all StagingPerfume entries for the batch
+                
+                                $stagedPerfume->processing_status = 'processed';
+                                $stagedPerfume->validation_status = 'success'; // If all prices processed successfully
                 $stagedPerfume->processed_at = $now;
                 $stagedPerfume->save();
                 $processedCount++;
@@ -255,10 +253,63 @@ class StagingProcessorService
                 $failedCount++;
             }
         }
-
-        return [
-            'message' => "Processing complete. Processed: {$processedCount}, Perfumes Created: {$perfumesCreated}, Perfumes Updated: {$perfumesUpdated}, Prices Created: {$pricesCreated}, Prices Updated: {$pricesUpdated}, Failed: {$failedCount}",
-            'processed_count' => $processedCount,
+        
+                // After processing all StagingPerfume entries, perform deactivation
+                $deactivationTimestamp = Carbon::now(); // Use a consistent timestamp for this deactivation run
+        
+                // Get unique seller IDs for whom items were processed in this batch
+                $uniqueSellerIdsProcessedInThisBatch = array_keys($batchProcessedPriceIds);
+        
+                foreach ($uniqueSellerIdsProcessedInThisBatch as $currentSellerId) {
+                    // Get all perfume IDs for which this seller has existing prices in the production table.
+                    $perfumeIdsWithPricesForThisSeller = Price::where('seller_id', $currentSellerId)
+                                                              ->distinct()
+                                                              ->pluck('perfume_id')
+                                                              ->all();
+        
+                    foreach ($perfumeIdsWithPricesForThisSeller as $currentPerfumeId) {
+                        DB::beginTransaction();
+                        try {
+                            // Price IDs from the current sheet/batch for this specific seller/perfume.
+                            // If the perfume was not in the sheet for this seller in this batch, this will be an empty array.
+                            $processedPriceIdsForCurrentGroup = $batchProcessedPriceIds[$currentSellerId][$currentPerfumeId] ?? [];
+                            $uniqueProcessedPriceIdsForCurrentGroup = array_unique($processedPriceIdsForCurrentGroup);
+        
+                            // All existing price IDs in the DB for this seller/perfume.
+                            $existingProductionPriceIdsForGroup = Price::where('perfume_id', $currentPerfumeId)
+                                ->where('seller_id', $currentSellerId)
+                                // ->where('stock_status', 'In Stock') // Optional: only consider deactivating 'In Stock' items
+                                ->pluck('id')->all();
+        
+                            $outdatedPriceIds = array_diff($existingProductionPriceIdsForGroup, $uniqueProcessedPriceIdsForCurrentGroup);
+        
+                            if (!empty($outdatedPriceIds)) {
+                                Price::whereIn('id', $outdatedPriceIds) // Price IDs are unique, no need for extra seller_id/perfume_id here
+                                      ->update([
+                                          'stock_status' => 'Out of Stock',
+                                          'last_updated' => $deactivationTimestamp,
+                                      ]);
+                                Log::info("Deactivated outdated price IDs for perfume ID {$currentPerfumeId}, seller ID {$currentSellerId}: " . implode(',', $outdatedPriceIds));
+                                // Optionally, count these updates if needed for the summary (e.g., $pricesDeactivated)
+                            }
+                            DB::commit();
+                        } catch (\Exception $e) {
+                            DB::rollBack();
+                            Log::error("Error during deactivation for perfume ID {$currentPerfumeId}, seller ID {$currentSellerId}: " . $e->getMessage(), [
+                                'exception' => $e,
+                                'perfume_id' => $currentPerfumeId,
+                                'seller_id' => $currentSellerId,
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                            // This failure doesn't increment $failedCount for StagingPerfume records,
+                            // but it's a failure in a post-processing step.
+                        }
+                    }
+                }
+        
+                return [
+                    'message' => "Processing complete. Processed: {$processedCount}, Perfumes Created: {$perfumesCreated}, Perfumes Updated: {$perfumesUpdated}, Prices Created: {$pricesCreated}, Prices Updated: {$pricesUpdated}, Failed: {$failedCount}",
+                    'processed_count' => $processedCount,
             'perfumes_created' => $perfumesCreated,
             'perfumes_updated' => $perfumesUpdated,
             'prices_created' => $pricesCreated,
