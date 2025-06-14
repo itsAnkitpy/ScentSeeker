@@ -123,10 +123,18 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        'ingestion' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/ingestion.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 14, // Keep logs for 14 days, similar to default daily
+            'replace_placeholders' => true,
+        ],
+ 
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],
-
+ 
     ],
 
 ];

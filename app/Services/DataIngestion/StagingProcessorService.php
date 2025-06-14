@@ -83,7 +83,7 @@ class StagingProcessorService
 
                 if (!$seller) {
                     $errorMessage = "Seller with code '{$sellerCodeRaw}' not found.";
-                    Log::error("StagingProcessorService: {$errorMessage} for StagingPerfume ID {$stagedPerfume->id}");
+                    Log::channel('ingestion')->error("Seller not found.", ['seller_code_raw' => $sellerCodeRaw, 'staged_perfume_id' => $stagedPerfume->id, 'batch_id' => $stagedPerfume->import_batch_id, 'error_message' => $errorMessage]);
                     $stagedPerfume->processing_status = 'failed';
                     $stagedPerfume->validation_status = 'failed';
                     $stagedPerfume->error_details = ['error' => $errorMessage];
@@ -110,6 +110,7 @@ class StagingProcessorService
                     $stagedPerfume->error_details = ['error' => 'Missing perfume name or brand.'];
                     $stagedPerfume->processed_at = $now;
                     $stagedPerfume->save();
+                    Log::channel('ingestion')->warning('Failed to process staged perfume due to missing name or brand.', ['staged_perfume_id' => $stagedPerfume->id, 'batch_id' => $stagedPerfume->import_batch_id, 'seller_code_raw' => $sellerCodeRaw, 'details' => $stagedPerfume->error_details]);
                     // Mark associated prices as failed too
                     foreach ($stagedPerfume->stagingPrices as $sp) {
                         $sp->processing_status = 'failed';
@@ -144,9 +145,11 @@ class StagingProcessorService
                     // Update existing perfume (be selective about what to update)
                     // For now, let's assume we might update description, notes, image if provided
                     $perfume->update(array_filter($perfumeData, fn($value) => $value !== null));
+                    Log::channel('ingestion')->info('Production perfume updated.', ['perfume_id' => $perfume->id, 'name' => $perfume->name, 'staged_perfume_id' => $stagedPerfume->id, 'batch_id' => $stagedPerfume->import_batch_id]);
                     $perfumesUpdated++;
                 } else {
                     $perfume = Perfume::create($perfumeData);
+                    Log::channel('ingestion')->info('Production perfume created.', ['perfume_id' => $perfume->id, 'name' => $perfume->name, 'staged_perfume_id' => $stagedPerfume->id, 'batch_id' => $stagedPerfume->import_batch_id]);
                     $perfumesCreated++;
                 }
                 $stagedPerfume->matched_production_perfume_id = $perfume->id;
@@ -162,6 +165,7 @@ class StagingProcessorService
                         $stagedPrice->error_details = ['error' => 'Missing price, currency, or size for price entry.'];
                         $stagedPrice->processed_at = $now;
                         $stagedPrice->save();
+                        Log::channel('ingestion')->warning('Failed to process staged price due to missing data.', ['staged_perfume_id' => $stagedPerfume->id, 'staged_price_id' => $stagedPrice->id, 'batch_id' => $stagedPerfume->import_batch_id, 'seller_code_raw' => $sellerCodeRaw, 'details' => $stagedPrice->error_details]);
                         // Note: This doesn't roll back the perfume creation/update, but marks the price as failed.
                         // Consider if a price failure should also mark the perfume staging as partially failed.
                         continue; 
@@ -202,10 +206,12 @@ class StagingProcessorService
                             'last_updated' => $now,
                         ]);
                         $newOrUpdatedPrice = $existingPrice;
+                        Log::channel('ingestion')->info('Production price updated.', ['price_id' => $newOrUpdatedPrice->id, 'perfume_id' => $perfume->id, 'seller_id' => $sellerId, 'size_ml' => $priceData['size_ml'], 'item_type' => $priceData['item_type'], 'staged_perfume_id' => $stagedPerfume->id, 'staged_price_id' => $stagedPrice->id, 'batch_id' => $stagedPerfume->import_batch_id]);
                         $pricesUpdated++;
                     } else {
                         $priceData['last_updated'] = $now; // Set last_updated for new records
                         $newOrUpdatedPrice = Price::create($priceData);
+                        Log::channel('ingestion')->info('Production price created.', ['price_id' => $newOrUpdatedPrice->id, 'perfume_id' => $perfume->id, 'seller_id' => $sellerId, 'size_ml' => $priceData['size_ml'], 'item_type' => $priceData['item_type'], 'staged_perfume_id' => $stagedPerfume->id, 'staged_price_id' => $stagedPrice->id, 'batch_id' => $stagedPerfume->import_batch_id]);
                         $pricesCreated++;
                     }
                     $processedProductionPriceIds[] = $newOrUpdatedPrice->id; // Track processed price ID for current StagingPerfume
@@ -238,9 +244,11 @@ class StagingProcessorService
 
             } catch (\Exception $e) {
                 DB::rollBack();
-                Log::error("Failed to process staged perfume ID {$stagedPerfume->id}: " . $e->getMessage(), [
-                    'exception' => $e,
+                Log::channel('ingestion')->error("Failed to process staged perfume: " . $e->getMessage(), [
                     'staged_perfume_id' => $stagedPerfume->id,
+                    'batch_id' => $stagedPerfume->import_batch_id,
+                    'seller_code_raw' => $stagedPerfume->seller_code_raw ?? 'N/A',
+                    'exception_message' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                 ]);
                 
@@ -289,13 +297,13 @@ class StagingProcessorService
                                           'stock_status' => 'Out of Stock',
                                           'last_updated' => $deactivationTimestamp,
                                       ]);
-                                Log::info("Deactivated outdated price IDs for perfume ID {$currentPerfumeId}, seller ID {$currentSellerId}: " . implode(',', $outdatedPriceIds));
+                                Log::channel('ingestion')->info('Production prices deactivated (Out of Stock).', ['perfume_id' => $currentPerfumeId, 'seller_id' => $currentSellerId, 'deactivated_price_ids' => $outdatedPriceIds, 'count' => count($outdatedPriceIds), 'batch_id' => $importBatchId ?? 'N/A_batch']);
                                 // Optionally, count these updates if needed for the summary (e.g., $pricesDeactivated)
                             }
                             DB::commit();
                         } catch (\Exception $e) {
                             DB::rollBack();
-                            Log::error("Error during deactivation for perfume ID {$currentPerfumeId}, seller ID {$currentSellerId}: " . $e->getMessage(), [
+                            Log::channel('ingestion')->error("Error during deactivation for perfume ID {$currentPerfumeId}, seller ID {$currentSellerId}: " . $e->getMessage(), [
                                 'exception' => $e,
                                 'perfume_id' => $currentPerfumeId,
                                 'seller_id' => $currentSellerId,
@@ -307,15 +315,17 @@ class StagingProcessorService
                     }
                 }
         
-                return [
+                $resultArray = [
                     'message' => "Processing complete. Processed: {$processedCount}, Perfumes Created: {$perfumesCreated}, Perfumes Updated: {$perfumesUpdated}, Prices Created: {$pricesCreated}, Prices Updated: {$pricesUpdated}, Failed: {$failedCount}",
                     'processed_count' => $processedCount,
-            'perfumes_created' => $perfumesCreated,
-            'perfumes_updated' => $perfumesUpdated,
-            'prices_created' => $pricesCreated,
-            'prices_updated' => $pricesUpdated,
-            'failed_count' => $failedCount,
-        ];
+                    'perfumes_created' => $perfumesCreated,
+                    'perfumes_updated' => $perfumesUpdated,
+                    'prices_created' => $pricesCreated,
+                    'prices_updated' => $pricesUpdated,
+                    'failed_count' => $failedCount,
+                ];
+                Log::channel('ingestion')->info('Staging processing summary.', array_merge(['batch_id' => $importBatchId], $resultArray));
+                return $resultArray;
     }
 
     // TODO: Implement resolveSellerId if seller information is part of the source or raw data

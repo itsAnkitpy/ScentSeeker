@@ -77,7 +77,7 @@ class IngestExcelCommand extends Command
                 $this->warn('Parsing completed with some issues:');
                 foreach ($parserErrors as $error) {
                     $this->warn("- {$error}");
-                    Log::warning("Excel Ingestion Warning ({$filePath}, Batch: {$importBatchId}, Seller: {$sellerCode}): {$error}");
+                    Log::channel('ingestion')->warning("Excel Ingestion Warning: {$error}", ['file_path' => $filePath, 'seller_code' => $sellerCode, 'batch_id' => $importBatchId]);
                 }
             }
 
@@ -105,12 +105,12 @@ class IngestExcelCommand extends Command
 
         } catch (ParserException $e) {
             $this->error("Parser Error: {$e->getMessage()}");
-            Log::error("Excel Ingestion Parser Error ({$filePath}, Batch: {$importBatchId}, Seller: {$sellerCode}): {$e->getMessage()}");
+            Log::channel('ingestion')->error("Excel Ingestion Parser Error: {$e->getMessage()}", ['file_path' => $filePath, 'seller_code' => $sellerCode, 'batch_id' => $importBatchId]);
             return Command::FAILURE;
         } catch (\Exception $e) {
             $this->error("An unexpected error occurred during staging (Batch ID: {$importBatchId}, Seller: {$sellerCode}): {$e->getMessage()}");
-            Log::error("Excel Ingestion Staging Error ({$filePath}, Batch: {$importBatchId}, Seller: {$sellerCode}): {$e->getMessage()}");
-            Log::error($e->getTraceAsString());
+            Log::channel('ingestion')->error("Excel Ingestion Staging Error: {$e->getMessage()}", ['file_path' => $filePath, 'seller_code' => $sellerCode, 'batch_id' => $importBatchId]);
+            Log::channel('ingestion')->error("Stack trace for staging error (Batch ID: {$importBatchId})", ['trace' => $e->getTraceAsString(), 'file_path' => $filePath, 'seller_code' => $sellerCode, 'batch_id' => $importBatchId]);
             return Command::FAILURE;
         }
 

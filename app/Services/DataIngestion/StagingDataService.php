@@ -32,9 +32,10 @@ class StagingDataService
             foreach ($parsedItems as $item) {
                 // Ensure essential perfume data is present
                 if (empty($item['perfume_name']) || empty($item['brand'])) {
-                    Log::warning("Skipping item due to missing perfume name or brand.", [
-                        'item' => $item,
-                        'import_batch_id' => $importBatchId
+                    Log::channel('ingestion')->warning("Skipping item due to missing perfume name or brand.", [
+                        'item_details' => $item,
+                        'batch_id' => $importBatchId,
+                        'seller_code' => $sellerCode
                     ]);
                     continue;
                 }
@@ -66,10 +67,11 @@ class StagingDataService
                     foreach ($item['prices'] as $priceData) {
                         // Ensure essential price data is present
                         if (!isset($priceData['price']) || !isset($priceData['currency']) || !isset($priceData['size_ml'])) {
-                             Log::warning("Skipping price entry due to missing price, currency, or size.", [
-                                'price_data' => $priceData,
-                                'perfume_name' => $item['perfume_name'],
-                                'import_batch_id' => $importBatchId
+                             Log::channel('ingestion')->warning("Skipping price entry due to missing price, currency, or size.", [
+                                'item_details' => $priceData,
+                                'batch_id' => $importBatchId,
+                                'seller_code' => $sellerCode,
+                                'perfume_name_for_context' => $item['perfume_name'] ?? 'N/A' // Keep perfume name for context if available
                             ]);
                             continue;
                         }
@@ -110,8 +112,10 @@ class StagingDataService
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to stage data for batch {$importBatchId}: " . $e->getMessage(), [
-                'exception' => $e,
+            Log::channel('ingestion')->error("Failed to stage data: " . $e->getMessage(), [
+                'batch_id' => $importBatchId,
+                'seller_code' => $sellerCode,
+                'exception_message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
             throw $e; // Re-throw to be caught by the command

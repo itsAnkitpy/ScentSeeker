@@ -77,10 +77,10 @@ class ProcessStagedDataCommand extends Command
 
         } catch (\Exception $e) {
             $this->error("An unexpected error occurred during staged data processing: {$e->getMessage()}");
-            Log::error("ProcessStagedDataCommand Error: {$e->getMessage()}", [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString(),
-                'batchId' => $batchId
+            Log::channel('ingestion')->error("Error in ProcessStagedDataCommand: {$e->getMessage()}", [
+                'batch_id' => $batchId, // Ensure batch_id is always present, even if null
+                'exception_message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return Command::FAILURE;
         }
