@@ -23,7 +23,7 @@ Based on `project.md`.
         *   `[x]` Outline key RESTful API endpoints using **Laravel's routing system** (typically in `routes/api.php`), starting with versioning (e.g., `/api/v1/perfumes`, `/api/v1/perfumes/{perfume}/prices`, `/api/v1/register`, `/api/v1/login`).
         *   `[x]` Utilize **Laravel API Resources** for transforming Eloquent models and collections into standardized JSON responses. (PerfumeResource, PriceResource created)
         *   `[ ]` Plan for API documentation using tools like OpenAPI/Swagger, potentially generated with Laravel packages such as **Scribe**.
-    *   `[ ]` **Image Management Strategy:** Define how images (`image_url`) will be uploaded, stored, optimized, and served.
+    *   `[x]` **Image Management Strategy:** Define how images (`image_url`) will be uploaded, stored, optimized, and served. (Strategy defined in `docs/image_management_strategy.md`)
     *   `[ ]` **Legal & Compliance:**
         *   `[ ]` Draft initial Terms of Service and Privacy Policy.
         *   `[ ]` Plan for cookie consent mechanisms.
@@ -70,8 +70,8 @@ Based on `project.md`.
 
 7.  `[ ]` **Advanced Seller Integration & Data Ingestion (Laravel Task Scheduling & Queues):**
     *   `[ ]` **Overall Strategy:**
-        *   `[ ]` Implement a data staging area.
-        *   `[ ]` Develop modular, source-specific parsers/adaptors.
+        *   `[~]` Implement a data staging area. (Strategy defined in \`docs/data_ingestion_strategy.md\`; Migrations created)
+        *   [~] Develop modular, source-specific parsers/adaptors. (Architecture defined in \`docs/parser_adapter_architecture.md\`; Base classes created)
         *   `[ ]` Ensure ingestion jobs are idempotent.
         *   `[ ]` Implement robust error handling and detailed logging.
         *   `[ ]` Admin interface for manual review.

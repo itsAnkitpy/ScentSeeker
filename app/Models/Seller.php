@@ -12,6 +12,7 @@ class Seller extends Model
 
     protected $fillable = [
         'name',
+        'code',
         'logo_url',
         'website_url',
         'rating',

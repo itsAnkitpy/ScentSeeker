@@ -10,6 +10,10 @@ class Perfume extends Model
 {
     use HasFactory;
 
+    protected $casts = [
+        'notes' => 'array',
+    ];
+
     protected $fillable = [
         'name',
         'brand',
