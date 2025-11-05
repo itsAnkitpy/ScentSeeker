@@ -2,12 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\ProcessExcelIngestionJob;
 use App\Services\DataIngestion\Parsers\ExcelParserService;
 use App\Services\DataIngestion\Parsers\Exceptions\ParserException;
-use App\Services\DataIngestion\StagingDataService; // Added
+use App\Services\DataIngestion\StagingDataService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str; // Added for UUID generation
+use Illuminate\Support\Str;
 
 class IngestExcelCommand extends Command
 {
@@ -16,7 +17,10 @@ class IngestExcelCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'ingest:excel {--file= : The path to the Excel file to ingest.} {--seller-code= : The unique code of the seller providing the sheet.}';
+    protected $signature = 'ingest:excel 
+                            {--file= : The path to the Excel file to ingest.} 
+                            {--seller-code= : The unique code of the seller providing the sheet.}
+                            {--queue : Process the ingestion in the background using queues.}';
 
     /**
      * The console command description.
@@ -62,6 +66,14 @@ class IngestExcelCommand extends Command
         if (!file_exists($filePath) || !is_readable($filePath)) {
             $this->error("The file '{$filePath}' does not exist or is not readable.");
             return Command::FAILURE;
+        }
+
+        // If queue option is provided, dispatch job instead of processing synchronously
+        if ($this->option('queue')) {
+            $this->info("Dispatching Excel ingestion job to queue...");
+            ProcessExcelIngestionJob::dispatch($filePath, $sellerCode);
+            $this->info("Job dispatched successfully. Check queue worker and logs for progress.");
+            return Command::SUCCESS;
         }
 
         $this->info("Attempting to ingest data from: {$filePath} for seller: {$sellerCode}");

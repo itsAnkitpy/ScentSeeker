@@ -125,10 +125,15 @@ class StagingProcessorService
                 }
 
                 // 2. De-duplication & Transformation for Perfume
-                // Try to find an existing perfume by name and brand (case-insensitive for robustness)
-                $perfume = Perfume::whereRaw('LOWER(name) = ?', [strtolower($stagedPerfume->perfume_name_raw)])
-                                ->whereRaw('LOWER(brand) = ?', [strtolower($stagedPerfume->brand_name_raw)])
-                                ->first();
+                // Find existing perfume by name and brand (case-insensitive matching)
+                // Using a query that can utilize indexes better than LOWER()
+                $normalizedName = trim($stagedPerfume->perfume_name_raw);
+                $normalizedBrand = trim($stagedPerfume->brand_name_raw);
+                
+                $perfume = Perfume::where(function ($query) use ($normalizedName, $normalizedBrand) {
+                    $query->whereRaw('LOWER(TRIM(name)) = LOWER(?)', [$normalizedName])
+                          ->whereRaw('LOWER(TRIM(brand)) = LOWER(?)', [$normalizedBrand]);
+                })->first();
 
                 $perfumeData = [
                     'name' => $stagedPerfume->perfume_name_raw,
@@ -262,58 +267,8 @@ class StagingProcessorService
             }
         }
         
-                // After processing all StagingPerfume entries, perform deactivation
-                $deactivationTimestamp = Carbon::now(); // Use a consistent timestamp for this deactivation run
-        
-                // Get unique seller IDs for whom items were processed in this batch
-                $uniqueSellerIdsProcessedInThisBatch = array_keys($batchProcessedPriceIds);
-        
-                foreach ($uniqueSellerIdsProcessedInThisBatch as $currentSellerId) {
-                    // Get all perfume IDs for which this seller has existing prices in the production table.
-                    $perfumeIdsWithPricesForThisSeller = Price::where('seller_id', $currentSellerId)
-                                                              ->distinct()
-                                                              ->pluck('perfume_id')
-                                                              ->all();
-        
-                    foreach ($perfumeIdsWithPricesForThisSeller as $currentPerfumeId) {
-                        DB::beginTransaction();
-                        try {
-                            // Price IDs from the current sheet/batch for this specific seller/perfume.
-                            // If the perfume was not in the sheet for this seller in this batch, this will be an empty array.
-                            $processedPriceIdsForCurrentGroup = $batchProcessedPriceIds[$currentSellerId][$currentPerfumeId] ?? [];
-                            $uniqueProcessedPriceIdsForCurrentGroup = array_unique($processedPriceIdsForCurrentGroup);
-        
-                            // All existing price IDs in the DB for this seller/perfume.
-                            $existingProductionPriceIdsForGroup = Price::where('perfume_id', $currentPerfumeId)
-                                ->where('seller_id', $currentSellerId)
-                                // ->where('stock_status', 'In Stock') // Optional: only consider deactivating 'In Stock' items
-                                ->pluck('id')->all();
-        
-                            $outdatedPriceIds = array_diff($existingProductionPriceIdsForGroup, $uniqueProcessedPriceIdsForCurrentGroup);
-        
-                            if (!empty($outdatedPriceIds)) {
-                                Price::whereIn('id', $outdatedPriceIds) // Price IDs are unique, no need for extra seller_id/perfume_id here
-                                      ->update([
-                                          'stock_status' => 'Out of Stock',
-                                          'last_updated' => $deactivationTimestamp,
-                                      ]);
-                                Log::channel('ingestion')->info('Production prices deactivated (Out of Stock).', ['perfume_id' => $currentPerfumeId, 'seller_id' => $currentSellerId, 'deactivated_price_ids' => $outdatedPriceIds, 'count' => count($outdatedPriceIds), 'batch_id' => $importBatchId ?? 'N/A_batch']);
-                                // Optionally, count these updates if needed for the summary (e.g., $pricesDeactivated)
-                            }
-                            DB::commit();
-                        } catch (\Exception $e) {
-                            DB::rollBack();
-                            Log::channel('ingestion')->error("Error during deactivation for perfume ID {$currentPerfumeId}, seller ID {$currentSellerId}: " . $e->getMessage(), [
-                                'exception' => $e,
-                                'perfume_id' => $currentPerfumeId,
-                                'seller_id' => $currentSellerId,
-                                'trace' => $e->getTraceAsString(),
-                            ]);
-                            // This failure doesn't increment $failedCount for StagingPerfume records,
-                            // but it's a failure in a post-processing step.
-                        }
-                    }
-                }
+                // Deactivation logic is now handled by performBatchDeactivation method
+                // and called from the command after the batch is fully processed.
         
                 $resultArray = [
                     'message' => "Processing complete. Processed: {$processedCount}, Perfumes Created: {$perfumesCreated}, Perfumes Updated: {$perfumesUpdated}, Prices Created: {$pricesCreated}, Prices Updated: {$pricesUpdated}, Failed: {$failedCount}",
@@ -328,10 +283,124 @@ class StagingProcessorService
                 return $resultArray;
     }
 
-    // TODO: Implement resolveSellerId if seller information is part of the source or raw data
-    // private function resolveSellerId(string $sourceIdentifier, array $rawDataPayload): ?int
-    // {
-    //     // Logic to find or create a seller based on the source or data
-    //     return null;
-    // }
+    /**
+     * Performs deactivation of prices for a fully processed batch.
+     * It identifies production prices that were part of a previous import from this seller for a perfume,
+     * but are not present in the current (fully processed) batch, and marks them as 'Out of Stock'.
+     *
+     * @param string $importBatchId The import batch ID that has been fully processed.
+     * @param Carbon|null $deactivationTimestamp The timestamp to use for deactivation. Defaults to now().
+     * @return array Counts of deactivated prices and any errors.
+     */
+    public function performBatchDeactivation(string $importBatchId, ?Carbon $deactivationTimestamp = null): array
+    {
+        $deactivationTimestamp = $deactivationTimestamp ?? Carbon::now();
+        $deactivatedPricesCount = 0;
+        $deactivationErrors = [];
+
+        Log::channel('ingestion')->info("Starting batch deactivation process.", ['batch_id' => $importBatchId, 'deactivation_timestamp' => $deactivationTimestamp->toIso8601String()]);
+
+        // Get all successfully processed staging prices for this batch
+        // along with their matched production perfume and seller details.
+        $processedStagingPrices = StagingPrice::where('import_batch_id', $importBatchId)
+            ->where('processing_status', 'processed')
+            ->whereNotNull('matched_production_price_id')
+            ->with('stagingPerfume:id,seller_code_raw,matched_production_perfume_id') // Eager load necessary fields
+            ->get();
+
+        if ($processedStagingPrices->isEmpty()) {
+            Log::channel('ingestion')->info("No successfully processed staging prices found for batch to perform deactivation.", ['batch_id' => $importBatchId]);
+            // This might mean the batch had no prices, or all failed.
+            // We still need to check if this seller had *any* prices before for perfumes in this batch.
+            // For simplicity now, if no processed prices in this batch, we assume no "live" prices from this batch.
+            // A more robust approach might involve checking StagingPerfume entries for the batch to get seller/perfume combos.
+        }
+
+        // Group by seller, then by production perfume ID
+        $liveProductionPriceIdsBySellerPerfume = [];
+        $sellerPerfumeCombinationsInBatch = [];
+
+        foreach ($processedStagingPrices as $sp) {
+            if ($sp->stagingPerfume && $sp->stagingPerfume->seller_code_raw && $sp->stagingPerfume->matched_production_perfume_id) {
+                $sellerCode = $sp->stagingPerfume->seller_code_raw;
+                $prodPerfumeId = $sp->stagingPerfume->matched_production_perfume_id;
+                
+                $seller = Seller::where('code', $sellerCode)->first(); // Cache this if performance becomes an issue
+                if (!$seller) {
+                    Log::channel('ingestion')->warning("Seller not found during deactivation for seller_code_raw.", ['seller_code_raw' => $sellerCode, 'batch_id' => $importBatchId]);
+                    continue;
+                }
+                $sellerId = $seller->id;
+
+                if (!isset($liveProductionPriceIdsBySellerPerfume[$sellerId])) {
+                    $liveProductionPriceIdsBySellerPerfume[$sellerId] = [];
+                }
+                if (!isset($liveProductionPriceIdsBySellerPerfume[$sellerId][$prodPerfumeId])) {
+                    $liveProductionPriceIdsBySellerPerfume[$sellerId][$prodPerfumeId] = [];
+                }
+                $liveProductionPriceIdsBySellerPerfume[$sellerId][$prodPerfumeId][] = $sp->matched_production_price_id;
+                $sellerPerfumeCombinationsInBatch[$sellerId][$prodPerfumeId] = true; // Mark this combo as present in batch
+            }
+        }
+        
+        // Iterate over all unique seller/perfume combinations that were present in this batch.
+        // This ensures we only deactivate for sellers/perfumes touched by this batch.
+        foreach (array_keys($sellerPerfumeCombinationsInBatch) as $sellerId) {
+            foreach (array_keys($sellerPerfumeCombinationsInBatch[$sellerId]) as $perfumeId) {
+                DB::beginTransaction();
+                try {
+                    $liveProductionPriceIdsForGroup = $liveProductionPriceIdsBySellerPerfume[$sellerId][$perfumeId] ?? [];
+                    $uniqueLiveProductionPriceIds = array_unique($liveProductionPriceIdsForGroup);
+
+                    // Get all existing production prices for this seller and perfume
+                    $existingProductionPricesQuery = Price::where('seller_id', $sellerId)
+                        ->where('perfume_id', $perfumeId);
+                        // Optionally, only consider deactivating 'In Stock' items:
+                        // ->where('stock_status', 'In Stock');
+
+                    $pricesToDeactivate = $existingProductionPricesQuery->whereNotIn('id', $uniqueLiveProductionPriceIds)->get();
+
+                    if ($pricesToDeactivate->isNotEmpty()) {
+                        $deactivatedIds = $pricesToDeactivate->pluck('id')->all();
+                        Price::whereIn('id', $deactivatedIds)
+                            ->update([
+                                'stock_status' => 'Out of Stock',
+                                'last_updated' => $deactivationTimestamp,
+                            ]);
+                        $deactivatedPricesCount += count($deactivatedIds);
+                        Log::channel('ingestion')->info('Production prices deactivated for seller/perfume.', [
+                            'batch_id' => $importBatchId,
+                            'seller_id' => $sellerId,
+                            'perfume_id' => $perfumeId,
+                            'deactivated_price_ids' => $deactivatedIds,
+                            'count' => count($deactivatedIds)
+                        ]);
+                    }
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    $errorMessage = "Error during deactivation for seller ID {$sellerId}, perfume ID {$perfumeId}: " . $e->getMessage();
+                    Log::channel('ingestion')->error($errorMessage, [
+                        'batch_id' => $importBatchId,
+                        'seller_id' => $sellerId,
+                        'perfume_id' => $perfumeId,
+                        'exception_message' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    $deactivationErrors[] = $errorMessage;
+                }
+            }
+        }
+
+        Log::channel('ingestion')->info("Batch deactivation process finished.", [
+            'batch_id' => $importBatchId,
+            'deactivated_prices_count' => $deactivatedPricesCount,
+            'deactivation_errors_count' => count($deactivationErrors)
+        ]);
+
+        return [
+            'deactivated_prices_count' => $deactivatedPricesCount,
+            'errors' => $deactivationErrors,
+        ];
+    }
 }

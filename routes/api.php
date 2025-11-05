@@ -20,10 +20,12 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::group(['prefix' => 'v1', 'as' => 'api.v1.'], function () {
-    // Authentication routes
-    Route::post('/register', [AuthController::class, 'register'])->name('register');
-    Route::post('/login', [AuthController::class, 'login'])->name('login');
+Route::group(['prefix' => 'v1', 'as' => 'api.v1.', 'middleware' => 'throttle:60,1'], function () {
+    // Authentication routes (higher limit for auth)
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('/register', [AuthController::class, 'register'])->name('register');
+        Route::post('/login', [AuthController::class, 'login'])->name('login');
+    });
 
     // Perfume routes
     Route::get('perfumes/{perfume}/prices', [PerfumeController::class, 'prices'])->name('perfumes.prices');

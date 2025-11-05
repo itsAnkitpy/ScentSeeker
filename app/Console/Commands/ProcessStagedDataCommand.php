@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\DataIngestion\StagingProcessorService;
+use App\Models\StagingPerfume; // Added
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -72,6 +73,27 @@ class ProcessStagedDataCommand extends Command
             
             if ($result['processed_count'] > 0 && $result['processed_count'] === $limit) {
                 $this->info("There might be more records to process. Run the command again if needed.");
+            }
+
+            // If a specific batch was processed, check if it's complete and then perform deactivation.
+            if ($batchId) {
+                $remainingInBatch = StagingPerfume::where('import_batch_id', $batchId)
+                                                ->where('processing_status', 'new')
+                                                ->count();
+                
+                if ($remainingInBatch === 0) {
+                    $this->info("Batch {$batchId} fully processed. Performing deactivation of outdated prices for this batch...");
+                    $deactivationResult = $this->stagingProcessorService->performBatchDeactivation($batchId);
+                    $this->info("Deactivation complete for batch {$batchId}. Deactivated prices: " . $deactivationResult['deactivated_prices_count']);
+                    if (!empty($deactivationResult['errors'])) {
+                        $this->warn("There were errors during deactivation for batch {$batchId}:");
+                        foreach ($deactivationResult['errors'] as $error) {
+                            $this->warn("- {$error}");
+                        }
+                    }
+                } else {
+                    $this->info("Batch {$batchId} still has {$remainingInBatch} records pending. Deactivation will occur once the batch is fully processed.");
+                }
             }
 
 

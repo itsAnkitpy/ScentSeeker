@@ -32,4 +32,19 @@ class Perfume extends Model
     {
         return $this->hasMany(Price::class);
     }
+
+    /**
+     * Scope to find perfume by name and brand (case-insensitive).
+     * This uses a more efficient approach than whereRaw with LOWER().
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param string $name
+     * @param string $brand
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeByNameAndBrand($query, string $name, string $brand)
+    {
+        return $query->where('name', 'like', $name)
+                     ->where('brand', 'like', $brand);
+    }
 }

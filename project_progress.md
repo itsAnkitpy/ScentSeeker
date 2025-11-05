@@ -72,7 +72,7 @@ Based on `project.md`.
     *   `[ ]` **Overall Strategy:**
         *   `[~]` Implement a data staging area. (Strategy defined in \`docs/data_ingestion_strategy.md\`; Migrations created)
         *   [~] Develop modular, source-specific parsers/adaptors. (Architecture defined in \`docs/parser_adapter_architecture.md\`; Base classes created)
-        *   `[ ]` Ensure ingestion jobs are idempotent.
+        *   `[x]` Ensure ingestion jobs are idempotent. (Refactored deactivation logic in `StagingProcessorService` and `ProcessStagedDataCommand` to ensure deactivation occurs reliably once per fully processed batch).
         *   `[~]` Implement robust error handling and detailed logging. (Completed structured logging, granular info logs, and custom 'ingestion' channel for Excel ingestion pipeline as per `docs/excel_ingestion_logging_enhancements.md`)
         *   `[ ]` Admin interface for manual review.
     *   `[ ]` **Source 1: Verified Seller Websites:**

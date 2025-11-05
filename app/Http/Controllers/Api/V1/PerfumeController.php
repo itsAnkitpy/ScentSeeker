@@ -8,9 +8,10 @@ use App\Http\Requests\UpdatePerfumeRequest;
 use App\Http\Resources\PerfumeResource;
 use App\Http\Resources\PriceResource;
 use App\Models\Perfume;
-use Illuminate\Http\Request; // Added for request injection
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Http\Response; // Reverted to Illuminate\Http\Response
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 
 class PerfumeController extends Controller
 {
@@ -19,17 +20,26 @@ class PerfumeController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Perfume::query();
+        $searchTerm = $request->input('search');
+        $page = $request->input('page', 1);
+        
+        // Create cache key based on search and page
+        $cacheKey = 'perfumes.index.' . md5($searchTerm ?? 'all') . '.page.' . $page;
+        
+        $perfumes = Cache::remember($cacheKey, 3600, function () use ($searchTerm) {
+            $query = Perfume::query();
 
-        if ($request->has('search')) {
-            $searchTerm = $request->input('search');
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name', 'like', '%' . $searchTerm . '%')
-                  ->orWhere('brand', 'like', '%' . $searchTerm . '%');
-            });
-        }
+            if ($searchTerm) {
+                $query->where(function ($q) use ($searchTerm) {
+                    $q->where('name', 'like', '%' . $searchTerm . '%')
+                      ->orWhere('brand', 'like', '%' . $searchTerm . '%');
+                });
+            }
 
-        return PerfumeResource::collection($query->paginate(15)->withQueryString());
+            return $query->paginate(15);
+        });
+
+        return PerfumeResource::collection($perfumes->withQueryString());
     }
 
     /**
@@ -38,6 +48,10 @@ class PerfumeController extends Controller
     public function store(StorePerfumeRequest $request): PerfumeResource
     {
         $perfume = Perfume::create($request->validated());
+        
+        // Clear relevant cache (simplified - in production, consider cache tags)
+        $this->clearPerfumeCache();
+        
         return new PerfumeResource($perfume);
     }
 
@@ -46,6 +60,12 @@ class PerfumeController extends Controller
      */
     public function show(Perfume $perfume): PerfumeResource
     {
+        $cacheKey = 'perfumes.show.' . $perfume->id;
+        
+        $perfume = Cache::remember($cacheKey, 3600, function () use ($perfume) {
+            return $perfume->load(['prices.seller']);
+        });
+
         return new PerfumeResource($perfume);
     }
 
@@ -54,7 +74,14 @@ class PerfumeController extends Controller
      */
     public function prices(Perfume $perfume): AnonymousResourceCollection
     {
-        return PriceResource::collection($perfume->prices()->paginate(10));
+        $page = request()->input('page', 1);
+        $cacheKey = 'perfumes.prices.' . $perfume->id . '.page.' . $page;
+        
+        $prices = Cache::remember($cacheKey, 1800, function () use ($perfume) {
+            return $perfume->prices()->with('seller')->paginate(10);
+        });
+
+        return PriceResource::collection($prices);
     }
 
     /**
@@ -63,6 +90,12 @@ class PerfumeController extends Controller
     public function update(UpdatePerfumeRequest $request, Perfume $perfume): PerfumeResource
     {
         $perfume->update($request->validated());
+        
+        // Clear relevant cache
+        Cache::forget('perfumes.show.' . $perfume->id);
+        Cache::forget('perfumes.prices.' . $perfume->id . '.page.1');
+        $this->clearPerfumeCache();
+        
         return new PerfumeResource($perfume);
     }
 
@@ -72,7 +105,25 @@ class PerfumeController extends Controller
     public function destroy(Perfume $perfume): Response
     {
         // Add authorization check here later (e.g., if (auth()->user()->cannot('delete', $perfume)))
+        
+        // Clear relevant cache before deletion
+        Cache::forget('perfumes.show.' . $perfume->id);
+        Cache::forget('perfumes.prices.' . $perfume->id . '.page.1');
+        $this->clearPerfumeCache();
+        
         $perfume->delete();
         return response()->noContent();
+    }
+
+    /**
+     * Clear perfume listing cache.
+     * This is a simplified approach - in production with Redis, consider using cache tags.
+     */
+    protected function clearPerfumeCache(): void
+    {
+        // Clear common cache keys (simplified - production should use cache tags)
+        Cache::forget('perfumes.index.all.page.1');
+        // Note: In production with many search variations, consider implementing cache tags
+        // or a more sophisticated cache invalidation strategy
     }
 }
