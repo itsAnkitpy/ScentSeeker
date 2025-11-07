@@ -31,6 +31,7 @@ Based on `project.md`.
     *   `[ ]` **Accessibility (a11y) Standards:** Mandate adherence to WCAG guidelines for all frontend development from the outset.
     *   `[x]` **Security by Design:**
         *   `[x]` Adopt a holistic security approach: leverage **Laravel's built-in validation** (Form Requests or manual validation) for input, output encoding (e.g., **Blade's default XSS protection**), Eloquent ORM best practices. (Used Form Requests for Perfume CRUD, Blade is default)
+        *   `[x]` Implement API rate limiting using Laravel's throttle middleware for authentication and perfume endpoints.
         *   `[ ]` Plan for regular security review checkpoints. Utilize Laravel's security features (CSRF protection for web routes, etc.). (CSRF is default for web routes)
 
 2.  **Database Design & Setup:**
@@ -77,7 +78,7 @@ Based on `project.md`.
         *   `[ ]` Admin interface for manual review.
     *   `[ ]` **Source 1: Verified Seller Websites:**
     *   `[ ]` **Source 2: Excel Sheets from Subreddits:**
-    *   `[ ]` Develop robust, scheduled jobs using **Laravel's Task Scheduling**.
+    *   `[~]` Develop robust, scheduled jobs using **Laravel's Task Scheduling**. (Queue jobs in place; scheduler configuration pending)
     *   `[ ]` Implement data normalization logic.
     *   `[ ]` Research and integrate with 2-3 initial seller APIs/websites.
 
@@ -113,9 +114,9 @@ Based on `project.md`.
 
 ## Phase 4: Optimization, Scaling & Monetization
 
-15. `[ ]` **Performance Optimization:**
-    *   `[ ]` Database indexing and query optimization.
-    *   `[ ]` Implement caching strategies.
+15. `[~]` **Performance Optimization:**
+    *   `[~]` Database indexing and query optimization. (Initial indexes added for perfumes; further query tuning pending)
+    *   `[~]` Implement caching strategies. (API response caching in place; broader caching strategy pending)
     *   `[ ]` Frontend performance.
 
 16. `[ ]` **SEO Optimization:**
