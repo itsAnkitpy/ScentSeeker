@@ -24,6 +24,10 @@ class Price extends Model
         'item_type',
     ];
 
+    protected $casts = [
+        'last_updated' => 'datetime',
+    ];
+
     /**
      * Get the perfume that owns the price.
      */

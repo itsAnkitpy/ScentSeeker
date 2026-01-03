@@ -181,6 +181,14 @@
                             class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
                         Reviews
                     </button>
+                    <button @click="activeTab = 'history'"
+                            :class="{
+                                'border-pink-500 text-pink-600': activeTab === 'history',
+                                'border-transparent text-gray-500 hover:text-gray-700': activeTab !== 'history'
+                            }"
+                            class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
+                        📈 Price History
+                    </button>
                 </nav>
             </div>
 
@@ -451,6 +459,93 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Price History Tab -->
+                <div x-show="activeTab === 'history'" x-transition
+                     x-data="{
+                        historyData: [],
+                        isLoadingHistory: true,
+                        chart: null,
+                        fetchHistory() {
+                            if (this.prices.length === 0) {
+                                this.isLoadingHistory = false;
+                                return;
+                            }
+                            const priceId = this.prices[0].id;
+                            fetch(`/api/v1/prices/${priceId}/history`)
+                                .then(res => res.json())
+                                .then(data => {
+                                    this.historyData = data.data || [];
+                                    this.isLoadingHistory = false;
+                                    this.$nextTick(() => this.renderChart());
+                                })
+                                .catch(() => {
+                                    this.historyData = [];
+                                    this.isLoadingHistory = false;
+                                });
+                        },
+                        renderChart() {
+                            if (this.historyData.length === 0) return;
+                            const ctx = document.getElementById('priceHistoryChart');
+                            if (!ctx) return;
+                            if (this.chart) this.chart.destroy();
+                            this.chart = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: this.historyData.map(h => h.date),
+                                    datasets: [{
+                                        label: 'Price (₹)',
+                                        data: this.historyData.map(h => h.price),
+                                        borderColor: 'rgb(236, 72, 153)',
+                                        backgroundColor: 'rgba(236, 72, 153, 0.1)',
+                                        fill: true,
+                                        tension: 0.3
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    plugins: {
+                                        legend: { display: false },
+                                        title: { display: true, text: 'Price Trend' }
+                                    },
+                                    scales: {
+                                        y: {
+                                            beginAtZero: false,
+                                            ticks: { callback: v => '₹' + v.toLocaleString() }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                     }"
+                     x-init="$watch('prices', () => { if (prices.length > 0) fetchHistory() })">
+                    <div class="mb-6">
+                        <h3 class="text-2xl font-bold text-gray-900 mb-2">Price History</h3>
+                        <p class="text-gray-600">Track how prices have changed over time</p>
+                    </div>
+
+                    <template x-if="isLoadingHistory">
+                        <div class="flex justify-center items-center py-12">
+                            <div class="animate-spin rounded-full h-12 w-12 border-4 border-pink-200 border-t-pink-600"></div>
+                        </div>
+                    </template>
+
+                    <template x-if="!isLoadingHistory && historyData.length === 0">
+                        <div class="text-center py-12 text-gray-500">
+                            <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                            <p>No price history available yet.</p>
+                            <p class="text-sm mt-1">Price trends will appear after we collect more data.</p>
+                        </div>
+                    </template>
+
+                    <template x-if="!isLoadingHistory && historyData.length > 0">
+                        <div class="bg-white rounded-2xl p-6 border border-gray-100">
+                            <canvas id="priceHistoryChart" height="200"></canvas>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
