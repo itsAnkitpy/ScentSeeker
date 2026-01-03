@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\PasswordResetController;
 use App\Http\Controllers\Api\V1\PerfumeController;
+use App\Http\Controllers\Api\V1\PriceAlertController;
 use App\Http\Controllers\Api\V1\PriceController;
+use App\Http\Controllers\Api\V1\WishlistController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -36,6 +38,7 @@ Route::group(['prefix' => 'v1', 'as' => 'api.v1.', 'middleware' => 'throttle:60,
     });
 
     // Public perfume routes (read-only)
+    Route::get('perfumes/filters', [PerfumeController::class, 'filters'])->name('perfumes.filters');
     Route::get('perfumes/{perfume}/prices', [PerfumeController::class, 'prices'])->name('perfumes.prices');
     Route::apiResource('perfumes', PerfumeController::class)->only(['index', 'show']);
 
@@ -56,5 +59,30 @@ Route::group(['prefix' => 'v1', 'as' => 'api.v1.', 'middleware' => 'throttle:60,
 
         // Protected perfume CRUD (admin operations)
         Route::apiResource('perfumes', PerfumeController::class)->only(['store', 'update', 'destroy']);
+
+        // Wishlist routes
+        Route::prefix('wishlists')->name('wishlists.')->group(function () {
+            Route::get('/', [WishlistController::class, 'index'])->name('index');
+            Route::post('/', [WishlistController::class, 'store'])->name('store');
+            Route::get('/{wishlist}', [WishlistController::class, 'show'])->name('show');
+            Route::put('/{wishlist}', [WishlistController::class, 'update'])->name('update');
+            Route::delete('/{wishlist}', [WishlistController::class, 'destroy'])->name('destroy');
+            Route::post('/{wishlist}/items', [WishlistController::class, 'addItem'])->name('items.add');
+            Route::delete('/{wishlist}/items/{perfume}', [WishlistController::class, 'removeItem'])->name('items.remove');
+        });
+
+        // Wishlist quick actions (for heart icon toggle)
+        Route::post('/wishlist/toggle', [WishlistController::class, 'toggle'])->name('wishlist.toggle');
+        Route::get('/wishlist/check', [WishlistController::class, 'check'])->name('wishlist.check');
+
+        // Price alert routes
+        Route::prefix('price-alerts')->name('price-alerts.')->group(function () {
+            Route::get('/', [PriceAlertController::class, 'index'])->name('index');
+            Route::post('/', [PriceAlertController::class, 'store'])->name('store');
+            Route::get('/check', [PriceAlertController::class, 'check'])->name('check');
+            Route::get('/{priceAlert}', [PriceAlertController::class, 'show'])->name('show');
+            Route::put('/{priceAlert}', [PriceAlertController::class, 'update'])->name('update');
+            Route::delete('/{priceAlert}', [PriceAlertController::class, 'destroy'])->name('destroy');
+        });
     });
 });

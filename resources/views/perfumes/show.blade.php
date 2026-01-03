@@ -92,20 +92,168 @@
                         </div>
                     </div>
                     
-                    <!-- Action Buttons -->
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <button class="flex-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white py-4 px-6 rounded-2xl font-semibold hover:from-pink-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg flex items-center justify-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                            </svg>
-                            Compare Prices
-                        </button>
-                        <button class="bg-white/90 border border-gray-200 text-gray-700 py-4 px-6 rounded-2xl font-semibold hover:bg-white hover:shadow-lg transition-all flex items-center justify-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                            </svg>
-                            Read Reviews
-                        </button>
+                    <!-- Action Buttons with Wishlist & Alert -->
+                    <div class="space-y-4"
+                         x-data="{
+                            authToken: localStorage.getItem('auth_token'),
+                            inWishlist: false,
+                            hasAlert: false,
+                            existingAlert: null,
+                            showAlertModal: false,
+                            targetPrice: '',
+                            selectedSize: '',
+                            availableSizes: [30, 50, 100],
+                            alertMessage: '',
+                            isLoggedIn: !!localStorage.getItem('auth_token'),
+
+                            async checkStatus() {
+                                if (!this.authToken) return;
+                                
+                                // Check wishlist
+                                try {
+                                    const res = await fetch(`/api/v1/wishlist/check?perfume_id={{ $perfume->id }}`, {
+                                        headers: { 'Authorization': `Bearer ${this.authToken}` }
+                                    });
+                                    const data = await res.json();
+                                    this.inWishlist = data.in_wishlist;
+                                } catch (e) {}
+
+                                // Check alert
+                                try {
+                                    const res = await fetch(`/api/v1/price-alerts/check?perfume_id={{ $perfume->id }}`, {
+                                        headers: { 'Authorization': `Bearer ${this.authToken}` }
+                                    });
+                                    const data = await res.json();
+                                    this.hasAlert = data.has_alert;
+                                    this.existingAlert = data.alert;
+                                    if (this.existingAlert) {
+                                        this.targetPrice = this.existingAlert.target_price;
+                                    }
+                                } catch (e) {}
+                            },
+
+                            async toggleWishlist() {
+                                if (!this.authToken) {
+                                    window.location.href = '/login';
+                                    return;
+                                }
+                                try {
+                                    const res = await fetch('/api/v1/wishlist/toggle', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Authorization': `Bearer ${this.authToken}`,
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({ perfume_id: {{ $perfume->id }} })
+                                    });
+                                    const data = await res.json();
+                                    this.inWishlist = data.in_wishlist;
+                                } catch (e) {
+                                    console.error(e);
+                                }
+                            },
+
+                            async saveAlert() {
+                                if (!this.authToken) {
+                                    window.location.href = '/login';
+                                    return;
+                                }
+                                if (!this.targetPrice || this.targetPrice <= 0) {
+                                    this.alertMessage = 'Please enter a valid target price';
+                                    return;
+                                }
+                                try {
+                                    const res = await fetch('/api/v1/price-alerts', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Authorization': `Bearer ${this.authToken}`,
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({ 
+                                            perfume_id: {{ $perfume->id }},
+                                            size_ml: this.selectedSize ? parseInt(this.selectedSize) : null,
+                                            target_price: this.targetPrice
+                                        })
+                                    });
+                                    const data = await res.json();
+                                    if (res.ok) {
+                                        this.hasAlert = true;
+                                        this.existingAlert = data.data;
+                                        this.showAlertModal = false;
+                                        this.alertMessage = '';
+                                    } else {
+                                        this.alertMessage = data.message || 'Failed to create alert';
+                                    }
+                                } catch (e) {
+                                    this.alertMessage = 'An error occurred';
+                                }
+                            }
+                         }"
+                         x-init="checkStatus()">
+                        
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <!-- Add to Wishlist Button -->
+                            <button @click="toggleWishlist()"
+                                    :class="inWishlist ? 'bg-pink-500 text-white border-pink-500' : 'bg-white/90 border-gray-200 text-gray-700'"
+                                    class="flex-1 border py-4 px-6 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" :fill="inWishlist ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                </svg>
+                                <span x-text="inWishlist ? 'In Wishlist' : 'Add to Wishlist'"></span>
+                            </button>
+
+                            <!-- Set Price Alert Button -->
+                            <button @click="isLoggedIn ? showAlertModal = true : window.location.href = '/login'"
+                                    :class="hasAlert ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white/90 border-gray-200 text-gray-700'"
+                                    class="flex-1 border py-4 px-6 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                                </svg>
+                                <span x-text="hasAlert ? 'Alert Set ✓' : 'Set Price Alert'"></span>
+                            </button>
+                        </div>
+
+                        <!-- Price Alert Modal -->
+                        <div x-show="showAlertModal" x-cloak 
+                             class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                             @click.self="showAlertModal = false">
+                            <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+                                <h3 class="text-xl font-bold text-gray-800 mb-2">🔔 Set Price Alert</h3>
+                                <p class="text-gray-500 text-sm mb-6">We'll email you when the price drops below your target.</p>
+                                
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Size</label>
+                                    <select x-model="selectedSize" 
+                                            class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-400">
+                                        <option value="">Any Size</option>
+                                        <template x-for="size in availableSizes" :key="size">
+                                            <option :value="size" x-text="size + 'ml'"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Target Price (₹)</label>
+                                    <input type="number" x-model="targetPrice" placeholder="Enter target price..." 
+                                           class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-400">
+                                </div>
+
+                                <template x-if="alertMessage">
+                                    <div class="mb-4 text-red-500 text-sm" x-text="alertMessage"></div>
+                                </template>
+
+                                <div class="flex gap-4">
+                                    <button @click="saveAlert()" 
+                                            class="flex-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white py-3 rounded-xl font-semibold">
+                                        Save Alert
+                                    </button>
+                                    <button @click="showAlertModal = false" 
+                                            class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

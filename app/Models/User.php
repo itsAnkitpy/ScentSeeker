@@ -75,4 +75,31 @@ class User extends Authenticatable implements MustVerifyEmail, FilamentUser
     {
         return $this->username ?? $this->email ?? '';
     }
+
+    /**
+     * Get the user's wishlists.
+     */
+    public function wishlists()
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+
+    /**
+     * Get the user's price alerts.
+     */
+    public function priceAlerts()
+    {
+        return $this->hasMany(PriceAlert::class);
+    }
+
+    /**
+     * Get the user's default wishlist, creating one if it doesn't exist.
+     */
+    public function getDefaultWishlist(): Wishlist
+    {
+        return $this->wishlists()->firstOrCreate(
+            ['name' => 'My Wishlist'],
+            ['is_public' => false]
+        );
+    }
 }

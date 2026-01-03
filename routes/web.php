@@ -38,3 +38,14 @@ Route::get('/email/verify/{id}/{hash}', function (Request $request) {
 Route::get('/reset-password/{token}', function (string $token) {
     return view('auth.reset-password', ['token' => $token]);
 })->name('password.reset');
+
+// Authenticated user pages
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/wishlist', function () {
+        return view('user.wishlist');
+    })->name('wishlist');
+
+    Route::get('/alerts', function () {
+        return view('user.alerts');
+    })->name('alerts');
+});

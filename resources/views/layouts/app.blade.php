@@ -136,7 +136,7 @@
                                             <p class="text-sm font-medium text-gray-900" x-text="user.username"></p>
                                             <p class="text-xs text-gray-500" x-text="user.email"></p>
                                         </div>
-                                        <a href="#"
+                                        <a href="/wishlist"
                                             class="flex items-center px-4 py-2 text-gray-700 hover:bg-pink-50 hover:text-pink-600 transition-colors">
                                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor"
                                                 viewBox="0 0 24 24">
@@ -145,7 +145,7 @@
                                             </svg>
                                             Wishlist
                                         </a>
-                                        <a href="#"
+                                        <a href="/alerts"
                                             class="flex items-center px-4 py-2 text-gray-700 hover:bg-pink-50 hover:text-pink-600 transition-colors">
                                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor"
                                                 viewBox="0 0 24 24">
