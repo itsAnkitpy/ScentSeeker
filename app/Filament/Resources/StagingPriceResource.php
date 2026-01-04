@@ -17,7 +17,9 @@ class StagingPriceResource extends Resource
 {
     protected static ?string $model = StagingPrice::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-inbox-arrow-down';
+
+    protected static ?string $navigationGroup = 'Data Import';
 
     public static function form(Form $form): Form
     {

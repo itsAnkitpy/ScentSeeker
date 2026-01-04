@@ -8,6 +8,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
+    return view('landing');
+})->name('home');
+
+// Keep old welcome page accessible for reference (can be removed later)
+Route::get('/welcome-old', function () {
     return view('welcome');
 });
 
