@@ -229,45 +229,29 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         <template x-for="perfume in perfumes" :key="perfume.id">
                             <a :href="'/perfumes/' + perfume.id"
-                                class="group bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg hover:border-teal-200 transition-all duration-300">
-                                <!-- Image -->
-                                <div class="relative h-48 bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
-                                    <img :src="perfume.image_url || 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=400'"
-                                        :alt="perfume.name"
-                                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                        loading="lazy">
-                                    <!-- Season Badge -->
-                                    <span
-                                        class="absolute top-3 left-3 px-2 py-1 bg-white/90 backdrop-blur-sm text-xs font-medium text-gray-700 rounded-lg"
-                                        x-text="perfume.season || 'All Season'"></span>
-                                </div>
+                                class="group bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg hover:border-teal-200 transition-all duration-300 p-5">
+                                <h3 class="font-bold text-gray-900 text-lg line-clamp-2" x-text="perfume.name"></h3>
+                                <p class="text-sm text-gray-500 mt-1" x-text="perfume.brand"></p>
 
-                                <!-- Content -->
-                                <div class="p-5">
-                                    <p class="text-xs font-semibold text-teal-600 uppercase tracking-wide mb-1"
-                                        x-text="perfume.brand"></p>
-                                    <h3 class="font-semibold text-gray-900 mb-1 line-clamp-2" x-text="perfume.name"></h3>
-                                    <p class="text-sm text-gray-500 mb-4">
-                                        <span x-text="perfume.size_ml || '100'"></span>ml • <span
-                                            x-text="perfume.concentration || 'EDP'"></span>
-                                    </p>
-
-                                    <!-- Price & CTA -->
-                                    <div class="flex items-end justify-between">
-                                        <div>
-                                            <p class="text-xs text-gray-500">From</p>
-                                            <p class="text-xl font-bold text-gray-900">₹<span
-                                                    x-text="(perfume.min_price || 4999).toLocaleString()"></span></p>
-                                        </div>
-                                        <div
-                                            class="flex items-center gap-1 text-teal-600 text-sm font-medium group-hover:translate-x-1 transition-transform">
-                                            <span>Compare <span x-text="perfume.seller_count || 3"></span> prices</span>
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </div>
+                                <template x-if="perfume.min_price">
+                                    <div class="mt-4">
+                                        <span class="inline-block px-3 py-1.5 bg-teal-600 text-white text-sm font-semibold rounded-full">
+                                            From ₹<span x-text="parseFloat(perfume.min_price).toLocaleString()"></span>
+                                        </span>
+                                        <span x-show="perfume.seller_count > 0" class="text-xs text-gray-400 ml-2"
+                                            x-text="perfume.seller_count + (perfume.seller_count === 1 ? ' seller' : ' sellers')"></span>
                                     </div>
+                                </template>
+                                <template x-if="!perfume.min_price">
+                                    <p class="text-sm text-gray-400 mt-4">No prices yet</p>
+                                </template>
+
+                                <div class="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                                    <div class="flex flex-wrap gap-1.5 text-xs text-gray-500">
+                                        <span x-show="perfume.concentration" x-text="perfume.concentration" class="px-2 py-0.5 bg-gray-100 rounded-full"></span>
+                                        <span x-show="perfume.gender_affinity" x-text="perfume.gender_affinity" class="px-2 py-0.5 bg-gray-100 rounded-full"></span>
+                                    </div>
+                                    <span class="text-teal-600 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">Compare →</span>
                                 </div>
                             </a>
                         </template>

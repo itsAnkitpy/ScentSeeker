@@ -18,6 +18,7 @@ class WishlistController extends Controller
     {
         $wishlists = $request->user()
             ->wishlists()
+            ->with('items.perfume')
             ->withCount('items')
             ->get();
 

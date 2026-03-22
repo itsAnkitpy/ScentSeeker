@@ -284,6 +284,186 @@ class StagingProcessorService
     }
 
     /**
+     * Process a single StagingPerfume record by its specific model instance.
+     */
+    public function processSingleRecord(StagingPerfume $record): array
+    {
+        $record->loadMissing('stagingPrices');
+
+        // Temporarily override: query just this one record
+        $originalStatus = $record->processing_status;
+        $originalValidation = $record->validation_status;
+
+        // Ensure it's eligible
+        if ($record->processing_status !== 'new' || $record->validation_status !== 'pending') {
+            return [
+                'message' => 'Record is not in a processable state.',
+                'processed_count' => 0,
+                'perfumes_created' => 0,
+                'perfumes_updated' => 0,
+                'prices_created' => 0,
+                'prices_updated' => 0,
+                'failed_count' => 0,
+            ];
+        }
+
+        // Use processStagedData but scope to just this record's batch + limit 1
+        // We need to ensure only THIS record is picked, so we temporarily mark others
+        // Instead, just inline the processing for a single record.
+
+        $now = Carbon::now();
+        $perfumesCreated = 0;
+        $perfumesUpdated = 0;
+        $pricesCreated = 0;
+        $pricesUpdated = 0;
+        $failedCount = 0;
+
+        DB::beginTransaction();
+        try {
+            $sellerCodeRaw = $record->seller_code_raw;
+            if (empty($sellerCodeRaw)) {
+                $record->processing_status = 'failed';
+                $record->validation_status = 'failed';
+                $record->error_details = ['error' => 'Missing seller_code_raw.'];
+                $record->processed_at = $now;
+                $record->save();
+                foreach ($record->stagingPrices as $sp) {
+                    $sp->update(['processing_status' => 'failed', 'validation_status' => 'failed', 'error_details' => ['error' => 'Parent perfume failed due to missing seller_code_raw.'], 'processed_at' => $now]);
+                }
+                DB::commit();
+                throw new \Exception('Missing seller_code_raw.');
+            }
+
+            $seller = Seller::where('code', $sellerCodeRaw)->first();
+            if (!$seller) {
+                $errorMessage = "Seller with code '{$sellerCodeRaw}' not found.";
+                $record->processing_status = 'failed';
+                $record->validation_status = 'failed';
+                $record->error_details = ['error' => $errorMessage];
+                $record->processed_at = $now;
+                $record->save();
+                foreach ($record->stagingPrices as $sp) {
+                    $sp->update(['processing_status' => 'failed', 'validation_status' => 'failed', 'error_details' => ['error' => $errorMessage], 'processed_at' => $now]);
+                }
+                DB::commit();
+                throw new \Exception($errorMessage);
+            }
+            $sellerId = $seller->id;
+
+            if (empty($record->perfume_name_raw) || empty($record->brand_name_raw)) {
+                $record->processing_status = 'failed';
+                $record->validation_status = 'failed';
+                $record->error_details = ['error' => 'Missing perfume name or brand.'];
+                $record->processed_at = $now;
+                $record->save();
+                foreach ($record->stagingPrices as $sp) {
+                    $sp->update(['processing_status' => 'failed', 'validation_status' => 'failed', 'error_details' => ['error' => 'Parent perfume failed due to missing name/brand.'], 'processed_at' => $now]);
+                }
+                DB::commit();
+                throw new \Exception('Missing perfume name or brand.');
+            }
+
+            $normalizedName = trim($record->perfume_name_raw);
+            $normalizedBrand = trim($record->brand_name_raw);
+
+            $perfume = Perfume::where(function ($query) use ($normalizedName, $normalizedBrand) {
+                $query->whereRaw('LOWER(TRIM(name)) = LOWER(?)', [$normalizedName])
+                      ->whereRaw('LOWER(TRIM(brand)) = LOWER(?)', [$normalizedBrand]);
+            })->first();
+
+            $perfumeData = [
+                'name' => $record->perfume_name_raw,
+                'brand' => $record->brand_name_raw,
+                'description' => $record->description_raw,
+                'notes' => $record->notes_raw,
+                'image_url' => $record->image_url_raw,
+                'concentration' => $record->concentration_raw,
+                'gender_affinity' => $record->gender_raw,
+            ];
+
+            if ($perfume) {
+                $perfume->update(array_filter($perfumeData, fn($value) => $value !== null));
+                $perfumesUpdated++;
+            } else {
+                $perfume = Perfume::create($perfumeData);
+                $perfumesCreated++;
+            }
+            $record->matched_production_perfume_id = $perfume->id;
+
+            foreach ($record->stagingPrices as $stagedPrice) {
+                if (empty($stagedPrice->price_raw) || empty($stagedPrice->currency_raw) || empty($record->size_raw)) {
+                    $stagedPrice->update(['processing_status' => 'failed', 'validation_status' => 'failed', 'error_details' => ['error' => 'Missing price, currency, or size.'], 'processed_at' => $now]);
+                    continue;
+                }
+
+                $priceData = [
+                    'perfume_id' => $perfume->id,
+                    'seller_id' => $sellerId,
+                    'price' => $stagedPrice->price_raw,
+                    'currency' => $stagedPrice->currency_raw,
+                    'stock_status' => $stagedPrice->availability_raw ?? 'In Stock',
+                    'product_url' => $record->seller_product_url_raw,
+                    'size_ml' => (int) filter_var($record->size_raw, FILTER_SANITIZE_NUMBER_INT),
+                    'item_type' => $stagedPrice->raw_data_payload['item_type'] ?? 'Full Bottle',
+                ];
+
+                $existingPrice = Price::where('perfume_id', $perfume->id)
+                    ->where('seller_id', $sellerId)
+                    ->where('size_ml', $priceData['size_ml'])
+                    ->where('item_type', $priceData['item_type'])
+                    ->first();
+
+                if ($existingPrice) {
+                    $existingPrice->update([
+                        'price' => $priceData['price'],
+                        'currency' => $priceData['currency'],
+                        'stock_status' => $priceData['stock_status'],
+                        'product_url' => $priceData['product_url'],
+                        'last_updated' => $now,
+                    ]);
+                    $pricesUpdated++;
+                } else {
+                    $priceData['last_updated'] = $now;
+                    Price::create($priceData);
+                    $pricesCreated++;
+                }
+
+                $stagedPrice->update([
+                    'matched_production_perfume_id' => $perfume->id,
+                    'processing_status' => 'processed',
+                    'validation_status' => 'success',
+                    'processed_at' => $now,
+                ]);
+            }
+
+            $record->processing_status = 'processed';
+            $record->validation_status = 'success';
+            $record->processed_at = $now;
+            $record->save();
+            DB::commit();
+
+            Log::channel('ingestion')->info('Single record processed.', ['staged_perfume_id' => $record->id, 'perfume' => $record->perfume_name_raw]);
+
+        } catch (\Exception $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+            Log::channel('ingestion')->error("Failed to process single record: " . $e->getMessage(), ['staged_perfume_id' => $record->id]);
+            throw $e;
+        }
+
+        return [
+            'message' => 'Processing complete.',
+            'processed_count' => 1,
+            'perfumes_created' => $perfumesCreated,
+            'perfumes_updated' => $perfumesUpdated,
+            'prices_created' => $pricesCreated,
+            'prices_updated' => $pricesUpdated,
+            'failed_count' => $failedCount,
+        ];
+    }
+
+    /**
      * Performs deactivation of prices for a fully processed batch.
      * It identifies production prices that were part of a previous import from this seller for a perfume,
      * but are not present in the current (fully processed) batch, and marks them as 'Out of Stock'.

@@ -62,7 +62,7 @@ class ExcelParserService implements SourceParserInterface
             
             // Process Header Row
             $headerRow = $sheet->rangeToArray('A1:' . $sheet->getHighestDataColumn() . '1', null, true, false, true)[1];
-            $actualHeaders = array_map(fn($h) => trim(strtolower($h ?? '')), $headerRow);
+            $actualHeaders = array_map(fn($h) => trim(strtolower(preg_replace('/[\s]*\*[\s]*$/', '', trim($h ?? '')))), $headerRow);
 
             foreach ($expectedHeaders as $expectedKey => $config) {
                 $columnIndex = array_search($expectedKey, $actualHeaders);

@@ -26,6 +26,8 @@ class PerfumeResource extends JsonResource
             'concentration' => $this->concentration,
             'gender_affinity' => $this->gender_affinity,
             'launch_year' => $this->launch_year,
+            'min_price' => $this->when($this->min_price !== null, fn() => (float) $this->min_price),
+            'seller_count' => $this->when($this->seller_count !== null, fn() => (int) $this->seller_count),
             'created_at' => $this->created_at->toIso8601String(),
             'updated_at' => $this->updated_at->toIso8601String(),
         ];

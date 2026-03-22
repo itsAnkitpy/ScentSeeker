@@ -154,10 +154,11 @@ class StagingPerfumeResource extends Resource
                     ->action(function (StagingPerfume $record): void {
                         try {
                             $processorService = app(StagingProcessorService::class);
-                            $result = $processorService->processStagedData($record->import_batch_id, 1);
+                            $result = $processorService->processSingleRecord($record);
 
                             Notification::make()
                                 ->title('Processed Successfully')
+                                ->body("Perfume: {$record->perfume_name_raw} — Created: {$result['perfumes_created']}, Updated: {$result['perfumes_updated']}, Prices: {$result['prices_created']} new, {$result['prices_updated']} updated")
                                 ->success()
                                 ->send();
                         } catch (\Exception $e) {
@@ -180,6 +181,7 @@ class StagingPerfumeResource extends Resource
                         ->action(function (Collection $records): void {
                             $processed = 0;
                             $failed = 0;
+                            $processorService = app(StagingProcessorService::class);
 
                             foreach ($records as $record) {
                                 if ($record->processing_status !== 'new') {
@@ -187,8 +189,7 @@ class StagingPerfumeResource extends Resource
                                 }
 
                                 try {
-                                    $processorService = app(StagingProcessorService::class);
-                                    $processorService->processStagedData($record->import_batch_id, 1);
+                                    $processorService->processSingleRecord($record);
                                     $processed++;
                                 } catch (\Exception $e) {
                                     $failed++;

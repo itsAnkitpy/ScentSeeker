@@ -144,10 +144,14 @@
         <div class="lg:flex">
             <!-- Product Image -->
             <div class="lg:w-1/2 relative">
-                <div class="aspect-square bg-gray-100 relative overflow-hidden">
+                <div class="aspect-square relative overflow-hidden flex items-center justify-center bg-gradient-to-br from-teal-50 to-cyan-50">
+                    @if($perfume->image_url)
                     <img class="w-full h-full object-cover"
-                         src="{{ $perfume->image_url ?: 'https://images.unsplash.com/photo-1541643600914-78b084683601?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' }}"
+                         src="{{ $perfume->image_url }}"
                          alt="{{ $perfume->name }}">
+                    @else
+                    <span class="text-8xl font-bold text-teal-200 font-playfair">{{ substr($perfume->brand, 0, 1) }}</span>
+                    @endif
                 </div>
             </div>
 

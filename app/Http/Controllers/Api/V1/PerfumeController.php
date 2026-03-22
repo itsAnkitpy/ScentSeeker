@@ -79,20 +79,24 @@ class PerfumeController extends Controller
             });
         }
 
+        // Always include price stats via subqueries (no join conflicts)
+        $query->addSelect([
+            'min_price' => \App\Models\Price::selectRaw('MIN(price)')
+                ->whereColumn('perfume_id', 'perfumes.id')
+                ->where('stock_status', 'In Stock'),
+            'seller_count' => \App\Models\Price::selectRaw('COUNT(DISTINCT seller_id)')
+                ->whereColumn('perfume_id', 'perfumes.id')
+                ->where('stock_status', 'In Stock'),
+        ]);
+
         // Sorting
         $sortBy = $request->input('sort', 'name_asc');
         switch ($sortBy) {
             case 'price_low_to_high':
-                $query->leftJoin('prices', 'perfumes.id', '=', 'prices.perfume_id')
-                    ->selectRaw('perfumes.*, MIN(prices.price) as min_price')
-                    ->groupBy('perfumes.id')
-                    ->orderBy('min_price', 'asc');
+                $query->orderBy('min_price', 'asc');
                 break;
             case 'price_high_to_low':
-                $query->leftJoin('prices', 'perfumes.id', '=', 'prices.perfume_id')
-                    ->selectRaw('perfumes.*, MIN(prices.price) as min_price')
-                    ->groupBy('perfumes.id')
-                    ->orderBy('min_price', 'desc');
+                $query->orderBy('min_price', 'desc');
                 break;
             case 'name_desc':
                 $query->orderBy('name', 'desc');
