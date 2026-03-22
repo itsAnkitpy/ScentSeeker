@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Join ScentCents')
+@section('hide-nav', true)
 
 @section('content')
     <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
@@ -42,16 +43,12 @@
                         return response.json();
                     })
                     .then(data => {
-                        this.message = 'Registration successful! You can now log in.';
-                        // Optionally, store token and redirect or update UI
-                        // For now, just clear form and show message
-                        console.log('Token:', data.access_token);
-                        this.formData.username = '';
-                        this.formData.email = '';
-                        this.formData.password = '';
-                        this.formData.password_confirmation = '';
-                        // Consider redirecting to login or dashboard:
-                        // window.location.href = '/login'; 
+                        this.message = 'Registration successful! Redirecting...';
+                        localStorage.setItem('auth_token', data.access_token);
+                        localStorage.setItem('user', JSON.stringify(data.user));
+                        setTimeout(() => {
+                            window.location.href = '/dashboard';
+                        }, 500);
                     })
                     .catch(errorData => {
                         if (errorData.errors) {
@@ -73,10 +70,7 @@
                 <!-- Header -->
                 <div class="text-center mb-8">
                     <div class="flex justify-center mb-6">
-                        <div
-                            class="w-16 h-16 bg-gradient-to-r from-teal-500 to-teal-700 rounded-2xl flex items-center justify-center">
-                            <span class="text-white font-bold text-2xl">S</span>
-                        </div>
+                        <img src="/images/logo2.png" alt="ScentCents" class="h-16 w-16 rounded-2xl object-contain">
                     </div>
                     <h2 class="text-3xl font-bold font-playfair">
                         <span class="bg-gradient-to-r from-teal-600 to-teal-700 bg-clip-text text-transparent">

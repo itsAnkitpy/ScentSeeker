@@ -3,7 +3,7 @@
 @section('title', 'Price Alerts')
 
 @section('content')
-    <div class="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 py-12" x-data="{
+    <div class="min-h-screen bg-gradient-to-br from-teal-50 via-cyan-50 to-white py-12" x-data="{
                 alerts: [],
                 isLoading: true,
                 authToken: localStorage.getItem('auth_token'),
@@ -67,7 +67,7 @@
             <!-- Header -->
             <div class="text-center mb-12">
                 <h1 class="text-4xl font-bold font-playfair mb-4">
-                    <span class="bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+                    <span class="bg-gradient-to-r from-teal-600 to-teal-700 bg-clip-text text-transparent">
                         🔔 Price Alerts
                     </span>
                 </h1>
@@ -77,7 +77,7 @@
             <!-- Loading State -->
             <template x-if="isLoading">
                 <div class="flex justify-center py-20">
-                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-pink-200 border-t-pink-600"></div>
+                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-teal-200 border-t-teal-600"></div>
                 </div>
             </template>
 
@@ -93,7 +93,7 @@
                     <h3 class="text-xl font-bold text-gray-700 mb-4">No price alerts</h3>
                     <p class="text-gray-500 mb-8">Set alerts on perfumes to get notified when prices drop.</p>
                     <a href="/perfumes"
-                        class="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-8 py-3 rounded-2xl font-semibold hover:from-pink-600 hover:to-purple-700 transition-all">
+                        class="bg-gradient-to-r from-teal-500 to-teal-600 text-white px-8 py-3 rounded-2xl font-semibold hover:from-teal-600 hover:to-teal-700 transition-all">
                         Browse Perfumes
                     </a>
                 </div>
@@ -105,7 +105,7 @@
                     <template x-for="alert in alerts" :key="alert.id">
                         <div class="bg-white/90 backdrop-blur-xl rounded-2xl p-6 shadow-xl border-2" :class="{
                                     'border-green-300 bg-green-50/50': alert.triggered_at,
-                                    'border-pink-200': !alert.triggered_at && alert.is_active,
+                                    'border-teal-200': !alert.triggered_at && alert.is_active,
                                     'border-gray-200 opacity-60': !alert.is_active
                                  }">
                             <div class="flex flex-col md:flex-row md:items-center gap-4">
@@ -115,18 +115,18 @@
 
                                 <!-- Perfume Info -->
                                 <div class="flex-1">
-                                    <p class="text-xs text-pink-600 font-bold uppercase" x-text="alert.perfume?.brand"></p>
+                                    <p class="text-xs text-teal-600 font-bold uppercase" x-text="alert.perfume?.brand"></p>
                                     <h4 class="text-lg font-bold text-gray-800" x-text="alert.perfume?.name"></h4>
 
                                     <div class="flex flex-wrap gap-4 mt-2 text-sm">
                                         <span class="text-gray-600" x-show="alert.size_ml">
-                                            Size: <strong class="text-purple-600" x-text="alert.size_ml + 'ml'"></strong>
+                                            Size: <strong class="text-teal-700" x-text="alert.size_ml + 'ml'"></strong>
                                         </span>
                                         <span class="text-gray-600" x-show="!alert.size_ml">
                                             Size: <strong class="text-gray-500">Any</strong>
                                         </span>
                                         <span class="text-gray-600">
-                                            Target: <strong class="text-pink-600">₹<span
+                                            Target: <strong class="text-teal-600">₹<span
                                                     x-text="formatPrice(alert.target_price)"></span></strong>
                                         </span>
                                         <span class="text-gray-600">
@@ -147,12 +147,12 @@
                                 <!-- Actions -->
                                 <div class="flex items-center gap-3">
                                     <button @click="toggleActive(alert)"
-                                        :class="alert.is_active ? 'bg-pink-500 hover:bg-pink-600' : 'bg-gray-400 hover:bg-gray-500'"
+                                        :class="alert.is_active ? 'bg-teal-500 hover:bg-teal-600' : 'bg-gray-400 hover:bg-gray-500'"
                                         class="px-4 py-2 text-white text-sm font-semibold rounded-xl transition-colors">
                                         <span x-text="alert.is_active ? 'Active' : 'Paused'"></span>
                                     </button>
                                     <a :href="`/perfumes/${alert.perfume_id}`"
-                                        class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-semibold rounded-xl transition-colors">
+                                        class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-xl transition-colors">
                                         View
                                     </a>
                                     <button @click="deleteAlert(alert.id)"

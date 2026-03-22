@@ -27,26 +27,21 @@
         <header class="bg-white/80 backdrop-blur-lg shadow-sm border-b border-white/20 sticky top-0 z-50">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between items-center h-16">
-                    <div class="flex items-center">
-                        <a href="/" class="flex items-center space-x-2">
-                            <div
-                                class="w-8 h-8 bg-gradient-to-r from-teal-500 to-teal-700 rounded-lg flex items-center justify-center">
-                                <span class="text-white font-bold text-lg">S</span>
-                            </div>
-                            <span
-                                class="text-xl font-bold bg-gradient-to-r from-teal-600 to-teal-700 bg-clip-text text-transparent">
-                                ScentCents
-                            </span>
+                    <div class="flex items-center" x-data="{ hasToken: !!localStorage.getItem('auth_token') }">
+                        <a :href="hasToken ? '/dashboard' : '/'">
+                            <img src="/images/logo2.png" alt="ScentCents" class="h-14 object-contain">
                         </a>
                     </div>
 
-                    <nav class="hidden md:flex items-center space-x-8">
-                        <a href="/" class="text-gray-700 hover:text-teal-600 font-medium transition-colors">Home</a>
+                    @unless(View::hasSection('hide-nav'))
+                    <nav class="hidden md:flex items-center space-x-8" x-data="{
+                        isLoggedIn: !!localStorage.getItem('auth_token')
+                    }">
+                        <a :href="isLoggedIn ? '/dashboard' : '/'" class="text-gray-700 hover:text-teal-600 font-medium transition-colors">Home</a>
                         <a href="{{ route('perfumes.index') }}"
                             class="text-gray-700 hover:text-teal-600 font-medium transition-colors">Browse</a>
-                        <a href="#" class="text-gray-700 hover:text-teal-600 font-medium transition-colors">Compare</a>
-                        <a href="#" class="text-gray-700 hover:text-teal-600 font-medium transition-colors">Deals</a>
                     </nav>
+                    @endunless
 
                     <div class="flex items-center space-x-4">
                         <button class="text-gray-600 hover:text-teal-600 transition-colors">
@@ -134,6 +129,15 @@
                                             <p class="text-sm font-medium text-gray-900" x-text="user.username"></p>
                                             <p class="text-xs text-gray-500" x-text="user.email"></p>
                                         </div>
+                                        <a href="/dashboard"
+                                            class="flex items-center px-4 py-2 text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors">
+                                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor"
+                                                viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                            </svg>
+                                            Dashboard
+                                        </a>
                                         <a href="/wishlist"
                                             class="flex items-center px-4 py-2 text-gray-700 hover:bg-teal-50 hover:text-teal-600 transition-colors">
                                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor"
@@ -214,11 +218,11 @@
                                  window.location.href = '/';
                              }
                          }">
-                        <a href="/" class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Home</a>
+                        @unless(View::hasSection('hide-nav'))
+                        <a :href="user ? '/dashboard' : '/'" class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Home</a>
                         <a href="{{ route('perfumes.index') }}"
                             class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Browse</a>
-                        <a href="#" class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Compare</a>
-                        <a href="#" class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Deals</a>
+                        @endunless
 
                         <div class="border-t border-gray-200 pt-2 mt-2">
                             <!-- Guest Links -->
@@ -246,9 +250,11 @@
                                             <p class="text-xs text-gray-500" x-text="user.email"></p>
                                         </div>
                                     </div>
-                                    <a href="#"
+                                    <a href="/dashboard"
+                                        class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Dashboard</a>
+                                    <a href="/wishlist"
                                         class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Wishlist</a>
-                                    <a href="#"
+                                    <a href="/alerts"
                                         class="block px-3 py-2 text-gray-700 hover:text-teal-600 font-medium">Price
                                         Alerts</a>
                                     <button @click="logout()"
@@ -272,15 +278,8 @@
             <div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
                     <div class="md:col-span-2">
-                        <div class="flex items-center space-x-2 mb-4">
-                            <div
-                                class="w-8 h-8 bg-gradient-to-r from-teal-500 to-teal-700 rounded-lg flex items-center justify-center">
-                                <span class="text-white font-bold text-lg">S</span>
-                            </div>
-                            <span
-                                class="text-xl font-bold bg-gradient-to-r from-teal-600 to-teal-700 bg-clip-text text-transparent">
-                                ScentCents
-                            </span>
+                        <div class="mb-4">
+                            <img src="/images/logo2.png" alt="ScentCents" class="h-16 object-contain">
                         </div>
                         <p class="text-gray-600 mb-4 max-w-md">
                             Your ultimate destination for comparing perfume prices and finding the best deals on luxury

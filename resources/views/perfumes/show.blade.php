@@ -3,759 +3,466 @@
 @section('title', $perfume->name)
 
 @section('content')
-<div class="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <!-- Main Product Section -->
-        <div class="bg-white/80 backdrop-blur-lg rounded-3xl shadow-xl border border-white/50 overflow-hidden mb-8">
-            <div class="lg:flex">
-                <!-- Product Image -->
-                <div class="lg:w-1/2 relative">
-                    <div class="aspect-square bg-gray-100 relative overflow-hidden">
-                        <img class="w-full h-full object-cover" 
-                             src="{{ $perfume->image_url ?: 'https://images.unsplash.com/photo-1541643600914-78b084683601?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' }}" 
-                             alt="{{ $perfume->name }}">
-                        
-                        <!-- Wishlist Button -->
-                        <button class="absolute top-4 right-4 w-12 h-12 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-pink-500 hover:text-white transition-all group">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                            </svg>
-                        </button>
-                    </div>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     x-data="{
+        prices: [],
+        allPrices: [],
+        sizes: [],
+        selectedSize: null,
+        isLoading: true,
+        activeTab: 'sellers',
+        authToken: localStorage.getItem('auth_token'),
+        inWishlist: false,
+        hasAlert: false,
+        existingAlert: null,
+        showAlertModal: false,
+        targetPrice: '',
+        alertSize: '',
+        alertMessage: '',
+
+        get minPrice() {
+            const inStock = this.prices.filter(p => p.stock_status === 'In Stock');
+            if (!inStock.length) return this.prices.length ? Math.min(...this.prices.map(p => parseFloat(p.price))) : 0;
+            return Math.min(...inStock.map(p => parseFloat(p.price)));
+        },
+        get bestSeller() {
+            if (!this.prices.length) return '';
+            const sorted = [...this.prices].filter(p => p.stock_status === 'In Stock').sort((a, b) => a.price - b.price);
+            return sorted.length ? sorted[0].seller.name : this.prices[0].seller.name;
+        },
+        get sellerCount() {
+            return new Set(this.prices.map(p => p.seller.id)).size;
+        },
+
+        async init() {
+            await this.fetchPrices();
+            this.checkWishlistAndAlert();
+        },
+
+        async fetchPrices() {
+            this.isLoading = true;
+            try {
+                const res = await fetch('/api/v1/perfumes/{{ $perfume->id }}/prices?per_page=100');
+                if (res.ok) {
+                    const data = await res.json();
+                    this.allPrices = data.data || [];
+                } else {
+                    this.allPrices = [];
+                }
+            } catch (e) {
+                this.allPrices = [];
+            }
+            // Extract unique sizes
+            this.sizes = [...new Set(this.allPrices.map(p => p.size_ml).filter(Boolean))].sort((a, b) => a - b);
+            // Default to first available size, or show all
+            if (this.sizes.length > 0) {
+                this.selectedSize = this.sizes[0];
+            }
+            this.filterBySize();
+            this.isLoading = false;
+        },
+
+        filterBySize() {
+            if (this.selectedSize) {
+                this.prices = this.allPrices.filter(p => p.size_ml === this.selectedSize);
+            } else {
+                this.prices = [...this.allPrices];
+            }
+        },
+
+        selectSize(size) {
+            this.selectedSize = size;
+            this.filterBySize();
+        },
+
+        showAllSizes() {
+            this.selectedSize = null;
+            this.prices = [...this.allPrices];
+        },
+
+        async checkWishlistAndAlert() {
+            if (!this.authToken) return;
+            try {
+                const res = await fetch('/api/v1/wishlist/check?perfume_id={{ $perfume->id }}', {
+                    headers: { 'Authorization': `Bearer ${this.authToken}` }
+                });
+                const data = await res.json();
+                this.inWishlist = data.in_wishlist;
+            } catch (e) {}
+            try {
+                const res = await fetch('/api/v1/price-alerts/check?perfume_id={{ $perfume->id }}', {
+                    headers: { 'Authorization': `Bearer ${this.authToken}` }
+                });
+                const data = await res.json();
+                this.hasAlert = data.has_alert;
+                this.existingAlert = data.alert;
+                if (this.existingAlert) this.targetPrice = this.existingAlert.target_price;
+            } catch (e) {}
+        },
+
+        async toggleWishlist() {
+            if (!this.authToken) { window.location.href = '/login'; return; }
+            try {
+                const res = await fetch('/api/v1/wishlist/toggle', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${this.authToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ perfume_id: {{ $perfume->id }} })
+                });
+                const data = await res.json();
+                this.inWishlist = data.in_wishlist;
+            } catch (e) {}
+        },
+
+        async saveAlert() {
+            if (!this.authToken) { window.location.href = '/login'; return; }
+            if (!this.targetPrice || this.targetPrice <= 0) { this.alertMessage = 'Please enter a valid target price'; return; }
+            try {
+                const res = await fetch('/api/v1/price-alerts', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${this.authToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        perfume_id: {{ $perfume->id }},
+                        size_ml: this.alertSize ? parseInt(this.alertSize) : null,
+                        target_price: this.targetPrice
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.hasAlert = true;
+                    this.existingAlert = data.data;
+                    this.showAlertModal = false;
+                    this.alertMessage = '';
+                } else {
+                    this.alertMessage = data.message || 'Failed to create alert';
+                }
+            } catch (e) { this.alertMessage = 'An error occurred'; }
+        }
+     }">
+
+    <!-- Main Product Section -->
+    <div class="bg-white/80 backdrop-blur-lg rounded-3xl shadow-xl border border-white/50 overflow-hidden mb-8">
+        <div class="lg:flex">
+            <!-- Product Image -->
+            <div class="lg:w-1/2 relative">
+                <div class="aspect-square bg-gray-100 relative overflow-hidden">
+                    <img class="w-full h-full object-cover"
+                         src="{{ $perfume->image_url ?: 'https://images.unsplash.com/photo-1541643600914-78b084683601?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' }}"
+                         alt="{{ $perfume->name }}">
                 </div>
-                
-                <!-- Product Details -->
-                <div class="lg:w-1/2 p-8">
-                    <!-- Season Badge and Brand -->
-                    <div class="flex items-center gap-3 mb-4">
-                        <span class="px-3 py-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm font-medium rounded-full">
-                            {{ $perfume->season ?? 'Spring' }}
-                        </span>
-                        <span class="text-gray-600 font-medium">{{ $perfume->brand }}</span>
-                    </div>
-                    
-                    <!-- Product Name -->
-                    <h1 class="text-3xl lg:text-4xl font-bold font-playfair text-gray-900 mb-4">{{ $perfume->name }}</h1>
-                    
-                    <!-- Rating -->
-                    <div class="flex items-center gap-2 mb-6" x-data="{ rating: 4.7, reviewCount: 3 }">
-                        <div class="flex text-yellow-400">
-                            <template x-for="i in 5">
-                                <svg class="w-5 h-5 fill-current" :class="i <= rating ? 'text-yellow-400' : 'text-gray-300'" viewBox="0 0 20 20">
-                                    <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
+            </div>
+
+            <!-- Product Details -->
+            <div class="lg:w-1/2 p-8">
+                <!-- Brand -->
+                <div class="flex items-center gap-3 mb-4">
+                    @if($perfume->concentration)
+                    <span class="px-3 py-1 bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-medium rounded-full">
+                        {{ $perfume->concentration }}
+                    </span>
+                    @endif
+                    <span class="text-gray-600 font-medium">{{ $perfume->brand }}</span>
+                </div>
+
+                <!-- Product Name -->
+                <h1 class="text-3xl lg:text-4xl font-bold font-playfair text-gray-900 mb-4">{{ $perfume->name }}</h1>
+
+                <!-- Gender & Year -->
+                <div class="flex items-center gap-4 mb-6 text-sm text-gray-500">
+                    @if($perfume->gender_affinity)
+                        <span>{{ $perfume->gender_affinity }}</span>
+                    @endif
+                    @if($perfume->launch_year)
+                        <span>Launched {{ $perfume->launch_year }}</span>
+                    @endif
+                </div>
+
+                <!-- Price Section (Dynamic) -->
+                <div class="mb-6">
+                    <template x-if="!isLoading && prices.length > 0">
+                        <div>
+                            <div class="flex items-baseline gap-2 mb-2">
+                                <span class="text-3xl font-bold text-gray-900">₹<span x-text="minPrice.toLocaleString()"></span></span>
+                                <span class="text-gray-600">lowest from <span x-text="sellerCount"></span> <span x-text="sellerCount === 1 ? 'seller' : 'sellers'"></span></span>
+                            </div>
+                            <div class="flex items-center gap-2 text-teal-600">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                                 </svg>
-                            </template>
+                                <span>Best price at <span x-text="bestSeller" class="font-semibold"></span></span>
+                            </div>
                         </div>
-                        <span class="text-gray-600" x-text="`${rating} (${reviewCount} reviews)`"></span>
-                    </div>
-                    
-                    <!-- Price Section -->
-                    <div class="mb-6" x-data="{ 
-                            minPrice: 4999, 
-                            sellerCount: 5, 
-                            bestSeller: 'Luxury Scents' 
-                        }">
-                        <div class="flex items-baseline gap-2 mb-2">
-                            <span class="text-3xl font-bold text-gray-900">₹<span x-text="minPrice.toLocaleString()"></span></span>
-                            <span class="text-gray-600">lowest price from <span x-text="sellerCount"></span> sellers</span>
+                    </template>
+                    <template x-if="!isLoading && prices.length === 0">
+                        <p class="text-gray-500">No prices available<span x-show="selectedSize"> for this size</span></p>
+                    </template>
+                    <template x-if="isLoading">
+                        <div class="animate-pulse h-12 bg-gray-200 rounded-xl w-48"></div>
+                    </template>
+                </div>
+
+                <!-- Description -->
+                @if($perfume->description)
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Description</h3>
+                    <p class="text-gray-600 leading-relaxed">{{ $perfume->description }}</p>
+                </div>
+                @endif
+
+                <!-- Size Selector (Dynamic from API data) -->
+                <div class="mb-8">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Select Size</h3>
+                    <template x-if="isLoading">
+                        <div class="animate-pulse flex gap-3">
+                            <div class="h-10 w-16 bg-gray-200 rounded-xl"></div>
+                            <div class="h-10 w-16 bg-gray-200 rounded-xl"></div>
                         </div>
-                        <div class="flex items-center gap-2 text-green-600">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-                            </svg>
-                            <span>Best price at <span x-text="bestSeller" class="font-semibold"></span></span>
-                        </div>
-                    </div>
-                    
-                    <!-- Description -->
-                    <div class="mb-6">
-                        <h3 class="text-lg font-semibold text-gray-800 mb-2">Description</h3>
-                        <p class="text-gray-600 leading-relaxed">
-                            {{ $perfume->description ?: 'A delicate floral fragrance with notes of rose, jasmine, and lily of the valley. Perfect for spring days and evenings, this elegant scent combines the freshness of morning dew with the sophistication of timeless florals.' }}
-                        </p>
-                    </div>
-                    
-                    <!-- Size Selector -->
-                    <div class="mb-8" x-data="{ selectedSize: '50ml' }">
-                        <h3 class="text-lg font-semibold text-gray-800 mb-3">Select Size</h3>
-                        <div class="flex gap-3">
-                            <template x-for="size in ['30ml', '50ml', '100ml']">
-                                <button @click="selectedSize = size"
-                                        :class="{
-                                            'border-pink-500 bg-pink-50 text-pink-700': selectedSize === size,
-                                            'border-gray-200 bg-white text-gray-700 hover:border-pink-300': selectedSize !== size
-                                        }"
+                    </template>
+                    <template x-if="!isLoading && sizes.length > 0">
+                        <div class="flex flex-wrap gap-3">
+                            <button @click="showAllSizes()"
+                                    :class="selectedSize === null ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 bg-white text-gray-700 hover:border-teal-300'"
+                                    class="px-4 py-2 border rounded-xl font-medium transition-all">
+                                All
+                            </button>
+                            <template x-for="size in sizes" :key="size">
+                                <button @click="selectSize(size)"
+                                        :class="selectedSize === size ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 bg-white text-gray-700 hover:border-teal-300'"
                                         class="px-4 py-2 border rounded-xl font-medium transition-all"
-                                        x-text="size">
+                                        x-text="size + 'ml'">
                                 </button>
                             </template>
                         </div>
-                    </div>
-                    
-                    <!-- Action Buttons with Wishlist & Alert -->
-                    <div class="space-y-4"
-                         x-data="{
-                            authToken: localStorage.getItem('auth_token'),
-                            inWishlist: false,
-                            hasAlert: false,
-                            existingAlert: null,
-                            showAlertModal: false,
-                            targetPrice: '',
-                            selectedSize: '',
-                            availableSizes: [30, 50, 100],
-                            alertMessage: '',
-                            isLoggedIn: !!localStorage.getItem('auth_token'),
+                    </template>
+                    <template x-if="!isLoading && sizes.length === 0">
+                        <p class="text-gray-500 text-sm">No size data available</p>
+                    </template>
+                </div>
 
-                            async checkStatus() {
-                                if (!this.authToken) return;
-                                
-                                // Check wishlist
-                                try {
-                                    const res = await fetch(`/api/v1/wishlist/check?perfume_id={{ $perfume->id }}`, {
-                                        headers: { 'Authorization': `Bearer ${this.authToken}` }
-                                    });
-                                    const data = await res.json();
-                                    this.inWishlist = data.in_wishlist;
-                                } catch (e) {}
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button @click="toggleWishlist()"
+                            :class="inWishlist ? 'bg-teal-600 text-white border-teal-600' : 'bg-white/90 border-gray-200 text-gray-700'"
+                            class="flex-1 border py-4 px-6 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" :fill="inWishlist ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                        </svg>
+                        <span x-text="inWishlist ? 'In Wishlist' : 'Add to Wishlist'"></span>
+                    </button>
 
-                                // Check alert
-                                try {
-                                    const res = await fetch(`/api/v1/price-alerts/check?perfume_id={{ $perfume->id }}`, {
-                                        headers: { 'Authorization': `Bearer ${this.authToken}` }
-                                    });
-                                    const data = await res.json();
-                                    this.hasAlert = data.has_alert;
-                                    this.existingAlert = data.alert;
-                                    if (this.existingAlert) {
-                                        this.targetPrice = this.existingAlert.target_price;
-                                    }
-                                } catch (e) {}
-                            },
-
-                            async toggleWishlist() {
-                                if (!this.authToken) {
-                                    window.location.href = '/login';
-                                    return;
-                                }
-                                try {
-                                    const res = await fetch('/api/v1/wishlist/toggle', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Authorization': `Bearer ${this.authToken}`,
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({ perfume_id: {{ $perfume->id }} })
-                                    });
-                                    const data = await res.json();
-                                    this.inWishlist = data.in_wishlist;
-                                } catch (e) {
-                                    console.error(e);
-                                }
-                            },
-
-                            async saveAlert() {
-                                if (!this.authToken) {
-                                    window.location.href = '/login';
-                                    return;
-                                }
-                                if (!this.targetPrice || this.targetPrice <= 0) {
-                                    this.alertMessage = 'Please enter a valid target price';
-                                    return;
-                                }
-                                try {
-                                    const res = await fetch('/api/v1/price-alerts', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Authorization': `Bearer ${this.authToken}`,
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({ 
-                                            perfume_id: {{ $perfume->id }},
-                                            size_ml: this.selectedSize ? parseInt(this.selectedSize) : null,
-                                            target_price: this.targetPrice
-                                        })
-                                    });
-                                    const data = await res.json();
-                                    if (res.ok) {
-                                        this.hasAlert = true;
-                                        this.existingAlert = data.data;
-                                        this.showAlertModal = false;
-                                        this.alertMessage = '';
-                                    } else {
-                                        this.alertMessage = data.message || 'Failed to create alert';
-                                    }
-                                } catch (e) {
-                                    this.alertMessage = 'An error occurred';
-                                }
-                            }
-                         }"
-                         x-init="checkStatus()">
-                        
-                        <div class="flex flex-col sm:flex-row gap-3">
-                            <!-- Add to Wishlist Button -->
-                            <button @click="toggleWishlist()"
-                                    :class="inWishlist ? 'bg-pink-500 text-white border-pink-500' : 'bg-white/90 border-gray-200 text-gray-700'"
-                                    class="flex-1 border py-4 px-6 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2">
-                                <svg class="w-5 h-5" :fill="inWishlist ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                                </svg>
-                                <span x-text="inWishlist ? 'In Wishlist' : 'Add to Wishlist'"></span>
-                            </button>
-
-                            <!-- Set Price Alert Button -->
-                            <button @click="isLoggedIn ? showAlertModal = true : window.location.href = '/login'"
-                                    :class="hasAlert ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white/90 border-gray-200 text-gray-700'"
-                                    class="flex-1 border py-4 px-6 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-                                </svg>
-                                <span x-text="hasAlert ? 'Alert Set ✓' : 'Set Price Alert'"></span>
-                            </button>
-                        </div>
-
-                        <!-- Price Alert Modal -->
-                        <div x-show="showAlertModal" x-cloak 
-                             class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-                             @click.self="showAlertModal = false">
-                            <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
-                                <h3 class="text-xl font-bold text-gray-800 mb-2">🔔 Set Price Alert</h3>
-                                <p class="text-gray-500 text-sm mb-6">We'll email you when the price drops below your target.</p>
-                                
-                                <div class="mb-4">
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Size</label>
-                                    <select x-model="selectedSize" 
-                                            class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-400">
-                                        <option value="">Any Size</option>
-                                        <template x-for="size in availableSizes" :key="size">
-                                            <option :value="size" x-text="size + 'ml'"></option>
-                                        </template>
-                                    </select>
-                                </div>
-
-                                <div class="mb-4">
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Target Price (₹)</label>
-                                    <input type="number" x-model="targetPrice" placeholder="Enter target price..." 
-                                           class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-pink-400">
-                                </div>
-
-                                <template x-if="alertMessage">
-                                    <div class="mb-4 text-red-500 text-sm" x-text="alertMessage"></div>
-                                </template>
-
-                                <div class="flex gap-4">
-                                    <button @click="saveAlert()" 
-                                            class="flex-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white py-3 rounded-xl font-semibold">
-                                        Save Alert
-                                    </button>
-                                    <button @click="showAlertModal = false" 
-                                            class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <button @click="authToken ? showAlertModal = true : window.location.href = '/login'"
+                            :class="hasAlert ? 'bg-amber-500 text-white border-amber-500' : 'bg-white/90 border-gray-200 text-gray-700'"
+                            class="flex-1 border py-4 px-6 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                        </svg>
+                        <span x-text="hasAlert ? 'Alert Set' : 'Set Price Alert'"></span>
+                    </button>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Tabbed Content Section -->
-        <div class="bg-white/80 backdrop-blur-lg rounded-3xl shadow-xl border border-white/50 overflow-hidden"
-             x-data="{ 
-                activeTab: 'sellers',
-                prices: [], 
-                isLoading: true, 
-                error: null,
-                fetchPrices() {
-                    this.isLoading = true;
-                    this.error = null;
-                    fetch(`/api/v1/perfumes/{{ $perfume->id }}/prices`)
-                        .then(response => {
-                            if (!response.ok) {
-                                // Fallback to mock data for demo
-                                return {
-                                    data: [
-                                        { id: 1, seller: { name: 'Luxury Scents' }, price: 4999, currency: 'INR', rating: 4.8, stock_status: 'In Stock', product_url: '#' },
-                                        { id: 2, seller: { name: 'Perfume World' }, price: 5299, currency: 'INR', rating: 4.6, stock_status: 'In Stock', product_url: '#' },
-                                        { id: 3, seller: { name: 'Fragrance Hub' }, price: 5499, currency: 'INR', rating: 4.5, stock_status: 'In Stock', product_url: '#' },
-                                        { id: 4, seller: { name: 'Scent Studio' }, price: 5599, currency: 'INR', rating: 4.3, stock_status: 'In Stock', product_url: '#' },
-                                        { id: 5, seller: { name: 'Aroma Avenue' }, price: 5799, currency: 'INR', rating: 4.2, stock_status: 'Out of Stock', product_url: '#' }
-                                    ]
-                                };
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            this.prices = data.data || data;
-                            this.isLoading = false;
-                        })
-                        .catch(err => {
-                            // Fallback to mock data
-                            this.prices = [
-                                { id: 1, seller: { name: 'Luxury Scents' }, price: 4999, currency: 'INR', rating: 4.8, stock_status: 'In Stock', product_url: '#' },
-                                { id: 2, seller: { name: 'Perfume World' }, price: 5299, currency: 'INR', rating: 4.6, stock_status: 'In Stock', product_url: '#' },
-                                { id: 3, seller: { name: 'Fragrance Hub' }, price: 5499, currency: 'INR', rating: 4.5, stock_status: 'In Stock', product_url: '#' }
-                            ];
-                            this.isLoading = false;
-                        });
-                }
-            }"
-            x-init="fetchPrices()">
-            
-            <!-- Tab Navigation -->
-            <div class="border-b border-gray-200">
-                <nav class="flex px-8">
-                    <button @click="activeTab = 'sellers'"
-                            :class="{
-                                'border-pink-500 text-pink-600': activeTab === 'sellers',
-                                'border-transparent text-gray-500 hover:text-gray-700': activeTab !== 'sellers'
-                            }"
-                            class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
-                        All Sellers
-                    </button>
-                    <button @click="activeTab = 'details'"
-                            :class="{
-                                'border-pink-500 text-pink-600': activeTab === 'details',
-                                'border-transparent text-gray-500 hover:text-gray-700': activeTab !== 'details'
-                            }"
-                            class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
-                        Perfume Details
-                    </button>
-                    <button @click="activeTab = 'reviews'"
-                            :class="{
-                                'border-pink-500 text-pink-600': activeTab === 'reviews',
-                                'border-transparent text-gray-500 hover:text-gray-700': activeTab !== 'reviews'
-                            }"
-                            class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
-                        Reviews
-                    </button>
-                    <button @click="activeTab = 'history'"
-                            :class="{
-                                'border-pink-500 text-pink-600': activeTab === 'history',
-                                'border-transparent text-gray-500 hover:text-gray-700': activeTab !== 'history'
-                            }"
-                            class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
-                        📈 Price History
-                    </button>
-                </nav>
+    <!-- Price Alert Modal -->
+    <div x-show="showAlertModal" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+         @click.self="showAlertModal = false">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <h3 class="text-xl font-bold text-gray-800 mb-2">Set Price Alert</h3>
+            <p class="text-gray-500 text-sm mb-6">We'll notify you when the price drops below your target.</p>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Size</label>
+                <select x-model="alertSize"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400">
+                    <option value="">Any Size</option>
+                    <template x-for="size in sizes" :key="size">
+                        <option :value="size" x-text="size + 'ml'"></option>
+                    </template>
+                </select>
             </div>
 
-            <!-- Tab Content -->
-            <div class="p-8">
-                <!-- All Sellers Tab -->
-                <div x-show="activeTab === 'sellers'" x-transition>
-                    <div class="mb-6">
-                        <h3 class="text-2xl font-bold text-gray-900 mb-2">All Sellers (<span x-text="prices.length"></span>)</h3>
-                        <p class="text-gray-600">Compare prices from verified sellers</p>
-                    </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Target Price</label>
+                <input type="number" x-model="targetPrice" placeholder="Enter target price..."
+                       class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal-400">
+            </div>
 
-                    <template x-if="isLoading">
-                        <div class="flex justify-center items-center py-12">
-                            <div class="animate-spin rounded-full h-12 w-12 border-4 border-pink-200 border-t-pink-600"></div>
-                        </div>
-                    </template>
+            <template x-if="alertMessage">
+                <div class="mb-4 text-red-500 text-sm" x-text="alertMessage"></div>
+            </template>
 
-                    <template x-if="!isLoading">
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full">
-                                <thead>
-                                    <tr class="bg-gray-50 rounded-t-xl">
-                                        <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Seller</th>
-                                        <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Price</th>
-                                        <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Rating</th>
-                                        <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Stock</th>
-                                        <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100">
-                                    <template x-for="(price, index) in prices" :key="price.id">
-                                        <tr class="hover:bg-gray-50 transition-colors">
-                                            <td class="px-6 py-4">
-                                                <div class="flex items-center">
-                                                    <div class="w-8 h-8 bg-gradient-to-r from-pink-400 to-purple-500 rounded-full flex items-center justify-center mr-3">
-                                                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                                        </svg>
-                                                    </div>
-                                                    <div>
-                                                        <div class="font-semibold text-gray-900" x-text="price.seller.name"></div>
-                                                        <div class="text-sm text-gray-500" x-show="index === 0">✓ Verified</div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <div class="text-lg font-bold text-gray-900">₹<span x-text="price.price.toLocaleString()"></span></div>
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <div class="flex items-center">
-                                                    <svg class="w-4 h-4 text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
-                                                    </svg>
-                                                    <span x-text="price.rating || '4.5'"></span>
-                                                </div>
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <span :class="{
-                                                    'bg-green-100 text-green-800': price.stock_status === 'In Stock',
-                                                    'bg-red-100 text-red-800': price.stock_status === 'Out of Stock'
-                                                }" class="px-2 py-1 text-xs font-medium rounded-full" x-text="price.stock_status || 'In Stock'"></span>
-                                            </td>
-                                            <td class="px-6 py-4">
-                                                <a :href="price.product_url || '#'" 
-                                                   class="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:from-pink-600 hover:to-purple-700 transition-all">
-                                                    Visit Store
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="mt-4 text-sm text-gray-500 flex items-center">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            Prices updated 2 days ago
-                        </div>
-                    </template>
-                </div>
-
-                <!-- Perfume Details Tab -->
-                <div x-show="activeTab === 'details'" x-transition>
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <!-- Technical Details -->
-                        <div>
-                            <h3 class="text-xl font-bold text-gray-900 mb-6">Technical Details</h3>
-                            <div class="space-y-4">
-                                <div class="flex justify-between py-3 border-b border-gray-100">
-                                    <span class="font-medium text-gray-600">Scent Type</span>
-                                    <span class="text-gray-900">{{ $perfume->scent_type ?? 'Floral' }}</span>
-                                </div>
-                                <div class="flex justify-between py-3 border-b border-gray-100">
-                                    <span class="font-medium text-gray-600">Concentration</span>
-                                    <span class="text-gray-900">{{ $perfume->concentration ?? 'Eau de Parfum' }}</span>
-                                </div>
-                                <div class="flex justify-between py-3 border-b border-gray-100">
-                                    <span class="font-medium text-gray-600">Longevity</span>
-                                    <span class="text-gray-900">{{ $perfume->longevity ?? '6-8 hours' }}</span>
-                                </div>
-                                <div class="flex justify-between py-3 border-b border-gray-100">
-                                    <span class="font-medium text-gray-600">Year Released</span>
-                                    <span class="text-gray-900">{{ $perfume->launch_year ?? '2020' }}</span>
-                                </div>
-                                <div class="flex justify-between py-3">
-                                    <span class="font-medium text-gray-600">Available Sizes</span>
-                                    <span class="text-gray-900">30ml, 50ml, 100ml</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Scent Profile -->
-                        <div>
-                            <h3 class="text-xl font-bold text-gray-900 mb-6">Scent Profile</h3>
-                            
-                            @if($perfume->notes)
-                                @php
-                                    $notes = is_string($perfume->notes) ? json_decode($perfume->notes, true) : $perfume->notes;
-                                @endphp
-                                <div class="space-y-6">
-                                    @if(is_array($notes))
-                                        @foreach(['top' => 'Top Notes', 'middle' => 'Middle Notes', 'base' => 'Base Notes'] as $noteType => $label)
-                                            @if(!empty($notes[$noteType]))
-                                                <div>
-                                                    <h4 class="font-semibold text-gray-800 mb-2">{{ $label }}</h4>
-                                                    <div class="flex flex-wrap gap-2">
-                                                        @foreach((is_array($notes[$noteType]) ? $notes[$noteType] : explode(', ', $notes[$noteType])) as $note)
-                                                            <span class="px-3 py-1 bg-gradient-to-r from-pink-100 to-purple-100 text-pink-700 text-sm rounded-full border border-pink-200">
-                                                                {{ trim($note) }}
-                                                            </span>
-                                                        @endforeach
-                                                    </div>
-                                                </div>
-                                            @endif
-                                        @endforeach
-                                    @else
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800 mb-2">Top Notes</h4>
-                                            <div class="flex flex-wrap gap-2">
-                                                <span class="px-3 py-1 bg-gradient-to-r from-pink-100 to-purple-100 text-pink-700 text-sm rounded-full border border-pink-200">Rose</span>
-                                                <span class="px-3 py-1 bg-gradient-to-r from-pink-100 to-purple-100 text-pink-700 text-sm rounded-full border border-pink-200">Bergamot</span>
-                                                <span class="px-3 py-1 bg-gradient-to-r from-pink-100 to-purple-100 text-pink-700 text-sm rounded-full border border-pink-200">Green Notes</span>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800 mb-2">Middle Notes</h4>
-                                            <div class="flex flex-wrap gap-2">
-                                                <span class="px-3 py-1 bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-700 text-sm rounded-full border border-orange-200">Jasmine</span>
-                                                <span class="px-3 py-1 bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-700 text-sm rounded-full border border-orange-200">Lily</span>
-                                                <span class="px-3 py-1 bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-700 text-sm rounded-full border border-orange-200">Ylang-Ylang</span>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <h4 class="font-semibold text-gray-800 mb-2">Base Notes</h4>
-                                            <div class="flex flex-wrap gap-2">
-                                                <span class="px-3 py-1 bg-gradient-to-r from-green-100 to-teal-100 text-green-700 text-sm rounded-full border border-green-200">Sandalwood</span>
-                                                <span class="px-3 py-1 bg-gradient-to-r from-green-100 to-teal-100 text-green-700 text-sm rounded-full border border-green-200">Vanilla</span>
-                                                <span class="px-3 py-1 bg-gradient-to-r from-green-100 to-teal-100 text-green-700 text-sm rounded-full border border-green-200">Musk</span>
-                                            </div>
-                                        </div>
-                                    @endif
-                                </div>
-                            @else
-                                <div class="space-y-6">
-                                    <div>
-                                        <h4 class="font-semibold text-gray-800 mb-2">Top Notes</h4>
-                                        <div class="flex flex-wrap gap-2">
-                                            <span class="px-3 py-1 bg-gradient-to-r from-pink-100 to-purple-100 text-pink-700 text-sm rounded-full border border-pink-200">Rose</span>
-                                            <span class="px-3 py-1 bg-gradient-to-r from-pink-100 to-purple-100 text-pink-700 text-sm rounded-full border border-pink-200">Bergamot</span>
-                                            <span class="px-3 py-1 bg-gradient-to-r from-pink-100 to-purple-100 text-pink-700 text-sm rounded-full border border-pink-200">Green Notes</span>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h4 class="font-semibold text-gray-800 mb-2">Middle Notes</h4>
-                                        <div class="flex flex-wrap gap-2">
-                                            <span class="px-3 py-1 bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-700 text-sm rounded-full border border-orange-200">Jasmine</span>
-                                            <span class="px-3 py-1 bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-700 text-sm rounded-full border border-orange-200">Lily</span>
-                                            <span class="px-3 py-1 bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-700 text-sm rounded-full border border-orange-200">Ylang-Ylang</span>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h4 class="font-semibold text-gray-800 mb-2">Base Notes</h4>
-                                        <div class="flex flex-wrap gap-2">
-                                            <span class="px-3 py-1 bg-gradient-to-r from-green-100 to-teal-100 text-green-700 text-sm rounded-full border border-green-200">Sandalwood</span>
-                                            <span class="px-3 py-1 bg-gradient-to-r from-green-100 to-teal-100 text-green-700 text-sm rounded-full border border-green-200">Vanilla</span>
-                                            <span class="px-3 py-1 bg-gradient-to-r from-green-100 to-teal-100 text-green-700 text-sm rounded-full border border-green-200">Musk</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Reviews Tab -->
-                <div x-show="activeTab === 'reviews'" x-transition
-                     x-data="{ 
-                        overallRating: 4.7,
-                        totalReviews: 3,
-                        ratingBreakdown: [
-                            { stars: 5, count: 2 },
-                            { stars: 4, count: 1 },
-                            { stars: 3, count: 0 },
-                            { stars: 2, count: 0 },
-                            { stars: 1, count: 0 }
-                        ],
-                        reviews: [
-                            { name: 'Sophie L.', rating: 5, text: 'My absolute favorite spring fragrance! Lasts all day and gets so many compliments.' },
-                            { name: 'Michael R.', rating: 4, text: 'Bought this for my wife and she loves it. Great floral scent that\\'s not overpowering.' },
-                            { name: 'Anna T.', rating: 5, text: 'Perfect balance of floral notes. Elegant and sophisticated without being old-fashioned.' }
-                        ]
-                    }">
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <!-- Rating Summary -->
-                        <div class="lg:col-span-1">
-                            <h3 class="text-xl font-bold text-gray-900 mb-6">Customer Reviews</h3>
-                            
-                            <div class="text-center mb-6">
-                                <div class="text-6xl font-bold text-pink-600 mb-2" x-text="overallRating"></div>
-                                <div class="flex justify-center mb-2">
-                                    <template x-for="i in 5">
-                                        <svg class="w-6 h-6" :class="i <= overallRating ? 'text-yellow-400' : 'text-gray-300'" fill="currentColor" viewBox="0 0 20 20">
-                                            <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
-                                        </svg>
-                                    </template>
-                                </div>
-                                <p class="text-gray-600">Based on <span x-text="totalReviews"></span> reviews</p>
-                            </div>
-
-                            <!-- Rating Breakdown -->
-                            <div class="space-y-2">
-                                <template x-for="item in ratingBreakdown" :key="item.stars">
-                                    <div class="flex items-center gap-2 text-sm">
-                                        <span x-text="item.stars"></span>
-                                        <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                            <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
-                                        </svg>
-                                        <div class="flex-1 bg-gray-200 rounded-full h-2">
-                                            <div class="bg-gradient-to-r from-pink-500 to-purple-600 h-2 rounded-full"
-                                                 :style="`width: ${(item.count / totalReviews) * 100}%`"></div>
-                                        </div>
-                                        <span x-text="item.count" class="w-4"></span>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-
-                        <!-- Individual Reviews -->
-                        <div class="lg:col-span-2">
-                            <div class="space-y-6">
-                                <template x-for="review in reviews" :key="review.name">
-                                    <div class="bg-gray-50 rounded-2xl p-6">
-                                        <div class="flex items-center justify-between mb-3">
-                                            <h4 class="font-semibold text-gray-900" x-text="review.name"></h4>
-                                            <div class="flex">
-                                                <template x-for="i in 5">
-                                                    <svg class="w-4 h-4" :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-300'" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
-                                                    </svg>
-                                                </template>
-                                            </div>
-                                        </div>
-                                        <p class="text-gray-600" x-text="review.text"></p>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Price History Tab -->
-                <div x-show="activeTab === 'history'" x-transition
-                     x-data="{
-                        historyData: [],
-                        isLoadingHistory: true,
-                        chart: null,
-                        fetchHistory() {
-                            if (this.prices.length === 0) {
-                                this.isLoadingHistory = false;
-                                return;
-                            }
-                            const priceId = this.prices[0].id;
-                            fetch(`/api/v1/prices/${priceId}/history`)
-                                .then(res => res.json())
-                                .then(data => {
-                                    this.historyData = data.data || [];
-                                    this.isLoadingHistory = false;
-                                    this.$nextTick(() => this.renderChart());
-                                })
-                                .catch(() => {
-                                    this.historyData = [];
-                                    this.isLoadingHistory = false;
-                                });
-                        },
-                        renderChart() {
-                            if (this.historyData.length === 0) return;
-                            const ctx = document.getElementById('priceHistoryChart');
-                            if (!ctx) return;
-                            if (this.chart) this.chart.destroy();
-                            this.chart = new Chart(ctx, {
-                                type: 'line',
-                                data: {
-                                    labels: this.historyData.map(h => h.date),
-                                    datasets: [{
-                                        label: 'Price (₹)',
-                                        data: this.historyData.map(h => h.price),
-                                        borderColor: 'rgb(236, 72, 153)',
-                                        backgroundColor: 'rgba(236, 72, 153, 0.1)',
-                                        fill: true,
-                                        tension: 0.3
-                                    }]
-                                },
-                                options: {
-                                    responsive: true,
-                                    plugins: {
-                                        legend: { display: false },
-                                        title: { display: true, text: 'Price Trend' }
-                                    },
-                                    scales: {
-                                        y: {
-                                            beginAtZero: false,
-                                            ticks: { callback: v => '₹' + v.toLocaleString() }
-                                        }
-                                    }
-                                }
-                            });
-                        }
-                     }"
-                     x-init="$watch('prices', () => { if (prices.length > 0) fetchHistory() })">
-                    <div class="mb-6">
-                        <h3 class="text-2xl font-bold text-gray-900 mb-2">Price History</h3>
-                        <p class="text-gray-600">Track how prices have changed over time</p>
-                    </div>
-
-                    <template x-if="isLoadingHistory">
-                        <div class="flex justify-center items-center py-12">
-                            <div class="animate-spin rounded-full h-12 w-12 border-4 border-pink-200 border-t-pink-600"></div>
-                        </div>
-                    </template>
-
-                    <template x-if="!isLoadingHistory && historyData.length === 0">
-                        <div class="text-center py-12 text-gray-500">
-                            <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                            </svg>
-                            <p>No price history available yet.</p>
-                            <p class="text-sm mt-1">Price trends will appear after we collect more data.</p>
-                        </div>
-                    </template>
-
-                    <template x-if="!isLoadingHistory && historyData.length > 0">
-                        <div class="bg-white rounded-2xl p-6 border border-gray-100">
-                            <canvas id="priceHistoryChart" height="200"></canvas>
-                        </div>
-                    </template>
-                </div>
+            <div class="flex gap-4">
+                <button @click="saveAlert()"
+                        class="flex-1 bg-gradient-to-r from-teal-500 to-cyan-600 text-white py-3 rounded-xl font-semibold hover:from-teal-600 hover:to-cyan-700 transition-all">
+                    Save Alert
+                </button>
+                <button @click="showAlertModal = false"
+                        class="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold">
+                    Cancel
+                </button>
             </div>
         </div>
+    </div>
 
-        <!-- Similar Perfumes Section -->
-        <div class="mt-12">
-            <div class="flex items-center justify-between mb-8">
-                <h2 class="text-3xl font-bold font-playfair">
-                    <span class="bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-                        Similar Perfumes
-                    </span>
-                </h2>
-                <a href="{{ route('perfumes.index') }}" class="text-pink-600 hover:text-pink-700 font-medium flex items-center gap-1">
-                    View All
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                    </svg>
-                </a>
-            </div>
+    <!-- Tabbed Content Section -->
+    <div class="bg-white/80 backdrop-blur-lg rounded-3xl shadow-xl border border-white/50 overflow-hidden">
+        <!-- Tab Navigation -->
+        <div class="border-b border-gray-200">
+            <nav class="flex px-8">
+                <button @click="activeTab = 'sellers'"
+                        :class="activeTab === 'sellers' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                        class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
+                    All Sellers
+                </button>
+                <button @click="activeTab = 'details'"
+                        :class="activeTab === 'details' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                        class="py-4 px-6 border-b-2 font-medium text-sm transition-colors">
+                    Perfume Details
+                </button>
+            </nav>
+        </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6"
-                 x-data="{
-                    similarPerfumes: [
-                        { name: 'Aqua Marine', brand: 'Dior', season: 'Summer', price: 6499, sellers: 3 },
-                        { name: 'Citrus Breeze', brand: 'Jo Malone', season: 'Summer', price: 7999, sellers: 2 },
-                        { name: 'Fresh Linen', brand: 'Clean', season: 'Spring', price: 3999, sellers: 2 }
-                    ]
-                 }">
-                <template x-for="perfume in similarPerfumes" :key="perfume.name">
-                    <div class="bg-white/80 backdrop-blur-lg rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-white/50 group">
-                        <div class="relative h-48 bg-gray-100 overflow-hidden">
-                            <img src="https://images.unsplash.com/photo-1541643600914-78b084683601?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80"
-                                 alt="Perfume"
-                                 class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
-                            <div class="absolute top-3 left-3">
-                                <span class="px-3 py-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-xs font-medium rounded-full" x-text="perfume.season"></span>
+        <!-- Tab Content -->
+        <div class="p-8">
+            <!-- All Sellers Tab -->
+            <div x-show="activeTab === 'sellers'" x-transition>
+                <div class="mb-6">
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Price Comparison <span x-show="selectedSize" class="text-teal-600" x-text="'(' + selectedSize + 'ml)'"></span></h3>
+                    <p class="text-gray-600"><span x-text="prices.length"></span> <span x-text="prices.length === 1 ? 'offer' : 'offers'"></span> found</p>
+                </div>
+
+                <template x-if="isLoading">
+                    <div class="flex justify-center items-center py-12">
+                        <div class="animate-spin rounded-full h-12 w-12 border-4 border-teal-200 border-t-teal-600"></div>
+                    </div>
+                </template>
+
+                <template x-if="!isLoading && prices.length > 0">
+                    <div class="space-y-4">
+                        <template x-for="(price, index) in prices.sort((a, b) => a.price - b.price)" :key="price.id">
+                            <div class="flex items-center justify-between p-5 rounded-2xl border transition-all"
+                                 :class="index === 0 ? 'border-teal-200 bg-teal-50/50' : 'border-gray-100 hover:border-gray-200'">
+                                <div class="flex items-center gap-4">
+                                    <!-- Seller icon -->
+                                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                                         :class="index === 0 ? 'bg-gradient-to-r from-teal-500 to-cyan-600' : 'bg-gray-400'">
+                                        <span x-text="price.seller.name.charAt(0)"></span>
+                                    </div>
+                                    <div>
+                                        <div class="font-semibold text-gray-900" x-text="price.seller.name"></div>
+                                        <div class="flex items-center gap-2 text-sm text-gray-500">
+                                            <span x-show="price.size_ml" x-text="price.size_ml + 'ml'"></span>
+                                            <span x-show="price.item_type" x-text="'· ' + price.item_type"></span>
+                                            <span x-show="index === 0" class="text-teal-600 font-medium">· Best Price</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-6">
+                                    <!-- Stock status -->
+                                    <span :class="price.stock_status === 'In Stock' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                                          class="px-2 py-1 text-xs font-medium rounded-full hidden sm:inline-block"
+                                          x-text="price.stock_status || 'In Stock'"></span>
+
+                                    <!-- Price -->
+                                    <div class="text-right">
+                                        <div class="text-xl font-bold text-gray-900">₹<span x-text="parseFloat(price.price).toLocaleString()"></span></div>
+                                        <div x-show="price.offer_details" class="text-xs text-amber-600" x-text="price.offer_details"></div>
+                                    </div>
+
+                                    <!-- Visit Store -->
+                                    <a :href="price.product_url || '#'"
+                                       target="_blank"
+                                       class="bg-gradient-to-r from-teal-500 to-cyan-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:from-teal-600 hover:to-cyan-700 transition-all hidden sm:inline-block">
+                                        Visit Store
+                                    </a>
+                                </div>
                             </div>
-                        </div>
-                        <div class="p-5">
-                            <p class="text-sm font-medium text-pink-600 mb-1" x-text="perfume.brand"></p>
-                            <h3 class="text-lg font-semibold text-gray-800 mb-2" x-text="perfume.name"></h3>
-                            <div class="flex items-center justify-between mb-4">
-                                <span class="text-xl font-bold text-gray-900">₹<span x-text="perfume.price.toLocaleString()"></span></span>
-                                <span class="text-sm text-gray-500"><span x-text="perfume.sellers"></span> sellers</span>
-                            </div>
-                            <button class="w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white py-2 rounded-xl font-medium hover:from-pink-600 hover:to-purple-700 transition-all">
-                                View Details
-                            </button>
-                        </div>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="!isLoading && prices.length === 0">
+                    <div class="text-center py-12 text-gray-500">
+                        <p>No prices available<span x-show="selectedSize"> for <span x-text="selectedSize + 'ml'"></span></span>. Try a different size.</p>
                     </div>
                 </template>
             </div>
-        </div>
 
-        <!-- Back to Perfumes -->
-        <div class="mt-8 text-center">
-            <a href="{{ route('perfumes.index') }}" class="inline-flex items-center gap-2 text-pink-600 hover:text-pink-700 font-medium transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-                </svg>
-                Back to all perfumes
-            </a>
+            <!-- Perfume Details Tab -->
+            <div x-show="activeTab === 'details'" x-transition>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Technical Details -->
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-6">Technical Details</h3>
+                        <div class="space-y-4">
+                            @if($perfume->concentration)
+                            <div class="flex justify-between py-3 border-b border-gray-100">
+                                <span class="font-medium text-gray-600">Concentration</span>
+                                <span class="text-gray-900">{{ $perfume->concentration }}</span>
+                            </div>
+                            @endif
+                            @if($perfume->gender_affinity)
+                            <div class="flex justify-between py-3 border-b border-gray-100">
+                                <span class="font-medium text-gray-600">Gender</span>
+                                <span class="text-gray-900">{{ $perfume->gender_affinity }}</span>
+                            </div>
+                            @endif
+                            @if($perfume->launch_year)
+                            <div class="flex justify-between py-3 border-b border-gray-100">
+                                <span class="font-medium text-gray-600">Year Released</span>
+                                <span class="text-gray-900">{{ $perfume->launch_year }}</span>
+                            </div>
+                            @endif
+                            <div class="flex justify-between py-3 border-b border-gray-100" x-show="sizes.length > 0">
+                                <span class="font-medium text-gray-600">Available Sizes</span>
+                                <span class="text-gray-900" x-text="sizes.map(s => s + 'ml').join(', ')"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Scent Profile -->
+                    @if($perfume->notes)
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900 mb-6">Scent Profile</h3>
+                        @php
+                            $notes = is_string($perfume->notes) ? json_decode($perfume->notes, true) : $perfume->notes;
+                        @endphp
+                        @if(is_array($notes))
+                            <div class="space-y-6">
+                                @foreach(['top' => 'Top Notes', 'middle' => 'Middle Notes', 'base' => 'Base Notes'] as $noteType => $label)
+                                    @if(!empty($notes[$noteType]))
+                                    <div>
+                                        <h4 class="font-semibold text-gray-800 mb-2">{{ $label }}</h4>
+                                        <div class="flex flex-wrap gap-2">
+                                            @foreach((is_array($notes[$noteType]) ? $notes[$noteType] : explode(', ', $notes[$noteType])) as $note)
+                                                <span class="px-3 py-1 bg-teal-50 text-teal-700 text-sm rounded-full border border-teal-200">
+                                                    {{ trim($note) }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                    @endif
+                                @endforeach
+                                {{-- If notes is a flat array (not keyed by top/middle/base) --}}
+                                @if(!isset($notes['top']) && !isset($notes['middle']) && !isset($notes['base']))
+                                    <div>
+                                        <h4 class="font-semibold text-gray-800 mb-2">Notes</h4>
+                                        <div class="flex flex-wrap gap-2">
+                                            @foreach($notes as $note)
+                                                <span class="px-3 py-1 bg-teal-50 text-teal-700 text-sm rounded-full border border-teal-200">
+                                                    {{ trim(is_string($note) ? $note : json_encode($note)) }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
+                    @endif
+                </div>
+            </div>
         </div>
     </div>
 </div>

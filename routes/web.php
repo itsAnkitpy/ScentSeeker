@@ -44,13 +44,16 @@ Route::get('/reset-password/{token}', function (string $token) {
     return view('auth.reset-password', ['token' => $token]);
 })->name('password.reset');
 
-// Authenticated user pages
-Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/wishlist', function () {
-        return view('user.wishlist');
-    })->name('wishlist');
+// Authenticated user pages (auth enforced client-side via localStorage token;
+// actual data is protected by Sanctum on the API endpoints these views call)
+Route::get('/dashboard', function () {
+    return view('dashboard');
+})->name('dashboard');
 
-    Route::get('/alerts', function () {
-        return view('user.alerts');
-    })->name('alerts');
-});
+Route::get('/wishlist', function () {
+    return view('user.wishlist');
+})->name('wishlist');
+
+Route::get('/alerts', function () {
+    return view('user.alerts');
+})->name('alerts');

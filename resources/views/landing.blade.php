@@ -220,11 +220,8 @@
                 }
             }">
                 <!-- Logo -->
-                <a href="/" class="flex items-center space-x-3 group">
-                    <div class="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-teal-500/30 transition-all duration-300">
-                        <span class="text-white font-bold text-xl">S</span>
-                    </div>
-                    <span class="text-2xl font-bold text-gray-900 tracking-tight">Scent<span class="text-teal-600">Cents</span></span>
+                <a href="/" class="group">
+                    <img src="/images/logo2.png" alt="ScentCents" class="h-14 object-contain group-hover:opacity-90 transition-all duration-300">
                 </a>
                 
                 <!-- Desktop Navigation -->
@@ -857,11 +854,8 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
                 <div class="col-span-1 md:col-span-2">
-                     <a href="/" class="flex items-center space-x-3 mb-6">
-                        <div class="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-700 rounded-xl flex items-center justify-center">
-                            <span class="text-white font-bold text-xl">S</span>
-                        </div>
-                        <span class="text-2xl font-bold text-white tracking-tight">Scent<span class="text-teal-500">Cents</span></span>
+                     <a href="/" class="inline-block mb-6">
+                        <img src="/images/logo2.png" alt="ScentCents" class="h-16 object-contain brightness-0 invert">
                     </a>
                     <p class="text-gray-400 max-w-sm mb-6 leading-relaxed">
                         The smartest way to buy perfumes in India. Compare prices, track deals, and save money with verified sellers.

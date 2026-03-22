@@ -144,11 +144,12 @@ class PerfumeController extends Controller
      */
     public function prices(Perfume $perfume): AnonymousResourceCollection
     {
+        $perPage = min((int) request()->input('per_page', 10), 100);
         $page = request()->input('page', 1);
-        $cacheKey = 'perfumes.prices.' . $perfume->id . '.page.' . $page;
+        $cacheKey = 'perfumes.prices.' . $perfume->id . '.pp.' . $perPage . '.page.' . $page;
 
-        $prices = Cache::remember($cacheKey, 1800, function () use ($perfume) {
-            return $perfume->prices()->with('seller')->paginate(10);
+        $prices = Cache::remember($cacheKey, 1800, function () use ($perfume, $perPage) {
+            return $perfume->prices()->with('seller')->paginate($perPage);
         });
 
         return PriceResource::collection($prices);
