@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\PriceAlert;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class PriceAlertController extends Controller
 {
@@ -38,9 +37,13 @@ class PriceAlertController extends Controller
         ]);
 
         // Check if user already has an alert for this perfume+size combo
+        $sizeml = $validated['size_ml'] ?? null;
         $existingAlert = $request->user()->priceAlerts()
             ->where('perfume_id', $validated['perfume_id'])
-            ->where('size_ml', $validated['size_ml'] ?? null)
+            ->when($sizeml !== null,
+                fn ($q) => $q->where('size_ml', $sizeml),
+                fn ($q) => $q->whereNull('size_ml'),
+            )
             ->first();
 
         if ($existingAlert) {

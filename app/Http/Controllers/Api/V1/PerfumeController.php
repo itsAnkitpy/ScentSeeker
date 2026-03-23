@@ -8,6 +8,7 @@ use App\Http\Requests\UpdatePerfumeRequest;
 use App\Http\Resources\PerfumeResource;
 use App\Http\Resources\PriceResource;
 use App\Models\Perfume;
+use App\Services\PerfumeFilterService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -15,107 +16,24 @@ use Illuminate\Support\Facades\Cache;
 
 class PerfumeController extends Controller
 {
+    public function __construct(
+        protected PerfumeFilterService $filterService,
+    ) {}
+
     /**
      * Display a listing of the resource with advanced filtering.
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Perfume::query()->select('perfumes.*');
+        $version = Cache::get('perfumes.index.version', 1);
+        $cacheKey = 'perfumes.index.v' . $version . '.' . md5(serialize($request->query()));
 
-        // Text search (name or brand)
-        if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('brand', 'like', '%' . $search . '%');
-            });
-        }
+        return Cache::remember($cacheKey, 60, function () use ($request) {
+            $query = $this->filterService->apply($request);
+            $perfumes = $query->paginate(15);
 
-        // Brand filter (multi-select)
-        if ($brands = $request->input('brands')) {
-            $brandList = is_array($brands) ? $brands : explode(',', $brands);
-            $query->whereIn('brand', $brandList);
-        }
-
-        // Concentration filter (EDP, EDT, Parfum, etc.)
-        if ($concentrations = $request->input('concentrations')) {
-            $concList = is_array($concentrations) ? $concentrations : explode(',', $concentrations);
-            $query->whereIn('concentration', $concList);
-        }
-
-        // Gender filter
-        if ($genders = $request->input('genders')) {
-            $genderList = is_array($genders) ? $genders : explode(',', $genders);
-            $query->whereIn('gender_affinity', $genderList);
-        }
-
-        // Notes filter (JSON array contains any of the selected notes)
-        if ($notes = $request->input('notes')) {
-            $noteList = is_array($notes) ? $notes : explode(',', $notes);
-            $query->where(function ($q) use ($noteList) {
-                foreach ($noteList as $note) {
-                    $q->orWhereJsonContains('notes', $note);
-                }
-            });
-        }
-
-        // Price range filter — single whereHas so min/max apply to the SAME price row
-        $minPrice = $request->input('min_price');
-        $maxPrice = $request->input('max_price');
-        if ($minPrice > 0 || $maxPrice) {
-            $query->whereHas('prices', function ($q) use ($minPrice, $maxPrice) {
-                $q->where('stock_status', 'In Stock');
-                if ($minPrice > 0) {
-                    $q->where('price', '>=', $minPrice);
-                }
-                if ($maxPrice) {
-                    $q->where('price', '<=', $maxPrice);
-                }
-            });
-        }
-
-        // Size filter (filter perfumes that have prices with specific sizes)
-        if ($sizes = $request->input('sizes')) {
-            $sizeList = is_array($sizes) ? $sizes : explode(',', $sizes);
-            $query->whereHas('prices', function ($q) use ($sizeList) {
-                $q->whereIn('size_ml', $sizeList);
-            });
-        }
-
-        // Always include price stats via subqueries (no join conflicts)
-        $query->addSelect([
-            'min_price' => \App\Models\Price::selectRaw('MIN(price)')
-                ->whereColumn('perfume_id', 'perfumes.id')
-                ->where('stock_status', 'In Stock'),
-            'seller_count' => \App\Models\Price::selectRaw('COUNT(DISTINCT seller_id)')
-                ->whereColumn('perfume_id', 'perfumes.id')
-                ->where('stock_status', 'In Stock'),
-        ]);
-
-        // Sorting
-        $sortBy = $request->input('sort', 'name_asc');
-        switch ($sortBy) {
-            case 'price_low_to_high':
-                $query->orderBy('min_price', 'asc');
-                break;
-            case 'price_high_to_low':
-                $query->orderBy('min_price', 'desc');
-                break;
-            case 'name_desc':
-                $query->orderBy('name', 'desc');
-                break;
-            case 'brand_asc':
-                $query->orderBy('brand', 'asc');
-                break;
-            case 'newest':
-                $query->orderBy('created_at', 'desc');
-                break;
-            default: // name_asc
-                $query->orderBy('name', 'asc');
-        }
-
-        $perfumes = $query->paginate(15);
-
-        return PerfumeResource::collection($perfumes->withQueryString());
+            return PerfumeResource::collection($perfumes->withQueryString());
+        });
     }
 
     /**
@@ -181,7 +99,6 @@ class PerfumeController extends Controller
      */
     public function destroy(Perfume $perfume): Response
     {
-        // Add authorization check here later (e.g., if (auth()->user()->cannot('delete', $perfume)))
 
         // Clear relevant cache before deletion
         Cache::forget('perfumes.show.' . $perfume->id);
@@ -198,10 +115,9 @@ class PerfumeController extends Controller
      */
     protected function clearPerfumeCache(): void
     {
-        // Clear common cache keys (simplified - production should use cache tags)
-        Cache::forget('perfumes.index.all.page.1');
-        // Note: In production with many search variations, consider implementing cache tags
-        // or a more sophisticated cache invalidation strategy
+        // Bump version to invalidate all index cache entries at once
+        Cache::increment('perfumes.index.version');
+        Cache::forget('perfumes.filters');
     }
 
     /**

@@ -57,8 +57,10 @@ Route::group(['prefix' => 'v1', 'as' => 'api.v1.', 'middleware' => 'throttle:60,
             return response()->json(['message' => 'Verification email sent']);
         })->name('verification.send');
 
-        // Protected perfume CRUD (admin operations)
-        Route::apiResource('perfumes', PerfumeController::class)->only(['store', 'update', 'destroy']);
+        // Protected perfume CRUD (admin only)
+        Route::middleware('admin')->group(function () {
+            Route::apiResource('perfumes', PerfumeController::class)->only(['store', 'update', 'destroy']);
+        });
 
         // Wishlist routes
         Route::prefix('wishlists')->name('wishlists.')->group(function () {

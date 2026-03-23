@@ -11,9 +11,7 @@ class UpdatePerfumeRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        // For now, allow all requests.
-        // Later, this should check if the authenticated user is an admin.
-        return true;
+        return $this->user()?->is_admin === true;
     }
 
     /**

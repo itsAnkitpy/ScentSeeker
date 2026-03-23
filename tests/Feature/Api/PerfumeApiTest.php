@@ -111,13 +111,13 @@ class PerfumeApiTest extends TestCase
     }
 
     /**
-     * Test authenticated user can create perfume.
+     * Test admin user can create perfume.
      */
-    public function test_authenticated_user_can_create_perfume(): void
+    public function test_admin_user_can_create_perfume(): void
     {
-        $user = User::factory()->create();
+        $admin = User::factory()->admin()->create();
 
-        $response = $this->actingAs($user, 'sanctum')
+        $response = $this->actingAs($admin, 'sanctum')
             ->postJson('/api/v1/perfumes', [
                 'name' => 'New Perfume',
                 'brand' => 'New Brand',
@@ -137,6 +137,22 @@ class PerfumeApiTest extends TestCase
     }
 
     /**
+     * Test non-admin user cannot create perfume.
+     */
+    public function test_non_admin_user_cannot_create_perfume(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/perfumes', [
+                'name' => 'New Perfume',
+                'brand' => 'New Brand',
+            ]);
+
+        $response->assertStatus(403);
+    }
+
+    /**
      * Test unauthenticated user cannot update perfume.
      */
     public function test_unauthenticated_user_cannot_update_perfume(): void
@@ -152,17 +168,17 @@ class PerfumeApiTest extends TestCase
     }
 
     /**
-     * Test authenticated user can update perfume.
+     * Test admin user can update perfume.
      */
-    public function test_authenticated_user_can_update_perfume(): void
+    public function test_admin_user_can_update_perfume(): void
     {
-        $user = User::factory()->create();
+        $admin = User::factory()->admin()->create();
         $perfume = Perfume::factory()->create([
             'name' => 'Original Name',
             'brand' => 'Original Brand',
         ]);
 
-        $response = $this->actingAs($user, 'sanctum')
+        $response = $this->actingAs($admin, 'sanctum')
             ->putJson("/api/v1/perfumes/{$perfume->id}", [
                 'name' => 'Updated Name',
                 'brand' => 'Updated Brand',
@@ -180,6 +196,22 @@ class PerfumeApiTest extends TestCase
     }
 
     /**
+     * Test non-admin user cannot update perfume.
+     */
+    public function test_non_admin_user_cannot_update_perfume(): void
+    {
+        $user = User::factory()->create();
+        $perfume = Perfume::factory()->create();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/perfumes/{$perfume->id}", [
+                'name' => 'Hacked Name',
+            ]);
+
+        $response->assertStatus(403);
+    }
+
+    /**
      * Test unauthenticated user cannot delete perfume.
      */
     public function test_unauthenticated_user_cannot_delete_perfume(): void
@@ -192,14 +224,14 @@ class PerfumeApiTest extends TestCase
     }
 
     /**
-     * Test authenticated user can delete perfume.
+     * Test admin user can delete perfume.
      */
-    public function test_authenticated_user_can_delete_perfume(): void
+    public function test_admin_user_can_delete_perfume(): void
     {
-        $user = User::factory()->create();
+        $admin = User::factory()->admin()->create();
         $perfume = Perfume::factory()->create();
 
-        $response = $this->actingAs($user, 'sanctum')
+        $response = $this->actingAs($admin, 'sanctum')
             ->deleteJson("/api/v1/perfumes/{$perfume->id}");
 
         $response->assertNoContent();
@@ -210,13 +242,31 @@ class PerfumeApiTest extends TestCase
     }
 
     /**
+     * Test non-admin user cannot delete perfume.
+     */
+    public function test_non_admin_user_cannot_delete_perfume(): void
+    {
+        $user = User::factory()->create();
+        $perfume = Perfume::factory()->create();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/perfumes/{$perfume->id}");
+
+        $response->assertStatus(403);
+
+        $this->assertDatabaseHas('perfumes', [
+            'id' => $perfume->id,
+        ]);
+    }
+
+    /**
      * Test perfume creation fails without required fields.
      */
     public function test_perfume_creation_fails_without_required_fields(): void
     {
-        $user = User::factory()->create();
+        $admin = User::factory()->admin()->create();
 
-        $response = $this->actingAs($user, 'sanctum')
+        $response = $this->actingAs($admin, 'sanctum')
             ->postJson('/api/v1/perfumes', []);
 
         $response->assertStatus(422)
