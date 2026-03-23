@@ -20,7 +20,7 @@ class PerfumeController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Perfume::query();
+        $query = Perfume::query()->select('perfumes.*');
 
         // Text search (name or brand)
         if ($search = $request->input('search')) {
@@ -58,16 +58,18 @@ class PerfumeController extends Controller
             });
         }
 
-        // Price range filter (filter by min price from related prices)
-        if ($minPrice = $request->input('min_price')) {
-            $query->whereHas('prices', function ($q) use ($minPrice) {
-                $q->where('price', '>=', $minPrice);
-            });
-        }
-
-        if ($maxPrice = $request->input('max_price')) {
-            $query->whereHas('prices', function ($q) use ($maxPrice) {
-                $q->where('price', '<=', $maxPrice);
+        // Price range filter — single whereHas so min/max apply to the SAME price row
+        $minPrice = $request->input('min_price');
+        $maxPrice = $request->input('max_price');
+        if ($minPrice > 0 || $maxPrice) {
+            $query->whereHas('prices', function ($q) use ($minPrice, $maxPrice) {
+                $q->where('stock_status', 'In Stock');
+                if ($minPrice > 0) {
+                    $q->where('price', '>=', $minPrice);
+                }
+                if ($maxPrice) {
+                    $q->where('price', '<=', $maxPrice);
+                }
             });
         }
 

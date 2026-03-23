@@ -19,14 +19,21 @@
                 <div class="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center">
                     <!-- Search -->
                     <div class="relative flex-1 max-w-md">
-                        <input type="text" x-model.debounce.400ms="searchTerm" @input="fetchPerfumes(1)"
+                        <input type="text" x-model="searchTerm"
+                            @input.debounce.400ms="fetchPerfumes(1)"
                             placeholder="Search perfumes or brands..."
-                            class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all text-sm">
+                            class="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all text-sm">
                         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none"
                             stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
+                        <button x-show="searchTerm.length > 0" @click="searchTerm = ''; fetchPerfumes(1)"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
                     </div>
 
                     <!-- Quick Filters -->
@@ -35,7 +42,7 @@
                         <div class="relative" x-data="{ open: false }">
                             <button @click="open = !open" @click.outside="open = false"
                                 class="flex items-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-teal-300 transition-all text-sm font-medium"
-                                :class="{ 'border-teal-500 bg-teal-50': filters.priceRange[0] > 0 || filters.priceRange[1] < 15000 }">
+                                :class="{ 'border-teal-500 bg-teal-50': filters.priceRange[0] > 0 || filters.priceRange[1] < priceMax() }">
                                 <span>Price</span>
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -45,14 +52,19 @@
                             <div x-show="open" x-transition
                                 class="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-100 p-4 z-50">
                                 <div class="space-y-4">
-                                    <div class="flex justify-between text-sm font-medium text-gray-700">
-                                        <span>₹<span x-text="filters.priceRange[0].toLocaleString()"></span></span>
-                                        <span>₹<span x-text="filters.priceRange[1].toLocaleString()"></span></span>
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex-1">
+                                            <label class="text-xs text-gray-500">Min</label>
+                                            <input type="number" x-model.number="filters.priceRange[0]" min="0" :max="filters.priceRange[1]"
+                                                class="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500">
+                                        </div>
+                                        <span class="text-gray-400 pt-4">—</span>
+                                        <div class="flex-1">
+                                            <label class="text-xs text-gray-500">Max</label>
+                                            <input type="number" x-model.number="filters.priceRange[1]" :min="filters.priceRange[0]" :max="priceMax()"
+                                                class="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500">
+                                        </div>
                                     </div>
-                                    <input type="range" x-model="filters.priceRange[0]" min="0" max="15000" step="500"
-                                        class="w-full accent-teal-600">
-                                    <input type="range" x-model="filters.priceRange[1]" min="0" max="15000" step="500"
-                                        class="w-full accent-teal-600">
                                     <button @click="applyFilters(); open = false"
                                         class="w-full py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700">
                                         Apply
@@ -78,15 +90,17 @@
                             </button>
                             <div x-show="open" x-transition
                                 class="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 p-3 z-50 max-h-64 overflow-y-auto">
-                                <template
-                                    x-for="brand in ['Chanel', 'Dior', 'Tom Ford', 'Jo Malone', 'Gucci', 'YSL', 'Armani', 'Versace']">
+                                <template x-for="brand in availableFilters.brands" :key="brand">
                                     <label
                                         class="flex items-center gap-3 px-2 py-2 hover:bg-gray-50 rounded-lg cursor-pointer">
                                         <input type="checkbox" :checked="filters.brands.includes(brand)"
-                                            @change="toggleBrand(brand)"
+                                            @change="toggleFilter('brands', brand)"
                                             class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500">
                                         <span class="text-sm text-gray-700" x-text="brand"></span>
                                     </label>
+                                </template>
+                                <template x-if="availableFilters.brands.length === 0">
+                                    <p class="text-sm text-gray-400 px-2 py-2">No brands available</p>
                                 </template>
                             </div>
                         </div>
@@ -125,17 +139,20 @@
                                     d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                             </svg>
                             <span>All Filters</span>
+                            <template x-if="activeFilterCount() > 0">
+                                <span class="bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full" x-text="activeFilterCount()"></span>
+                            </template>
                         </button>
                     </div>
                 </div>
 
                 <!-- Active Filter Pills -->
                 <div class="flex flex-wrap gap-2 mt-4" x-show="hasActiveFilters()">
-                    <template x-for="brand in filters.brands">
+                    <template x-for="brand in filters.brands" :key="'pill-brand-'+brand">
                         <span
                             class="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-sm">
                             <span x-text="brand"></span>
-                            <button @click="toggleBrand(brand)" class="hover:text-teal-900">
+                            <button @click="toggleFilter('brands', brand)" class="hover:text-teal-900">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M6 18L18 6M6 6l12 12" />
@@ -143,12 +160,42 @@
                             </button>
                         </span>
                     </template>
-                    <template x-if="filters.priceRange[0] > 0 || filters.priceRange[1] < 15000">
+                    <template x-for="conc in filters.concentrations" :key="'pill-conc-'+conc">
+                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-sm">
+                            <span x-text="conc"></span>
+                            <button @click="toggleFilter('concentrations', conc)" class="hover:text-teal-900">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </span>
+                    </template>
+                    <template x-for="gender in filters.genders" :key="'pill-gender-'+gender">
+                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-sm">
+                            <span x-text="gender"></span>
+                            <button @click="toggleFilter('genders', gender)" class="hover:text-teal-900">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </span>
+                    </template>
+                    <template x-for="size in filters.sizes" :key="'pill-size-'+size">
+                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-sm">
+                            <span x-text="size + 'ml'"></span>
+                            <button @click="toggleFilter('sizes', size)" class="hover:text-teal-900">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </span>
+                    </template>
+                    <template x-if="filters.priceRange[0] > 0 || filters.priceRange[1] < priceMax()">
                         <span
                             class="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-sm">
                             <span>₹<span x-text="filters.priceRange[0].toLocaleString()"></span> - ₹<span
                                     x-text="filters.priceRange[1].toLocaleString()"></span></span>
-                            <button @click="filters.priceRange = [0, 15000]; applyFilters()" class="hover:text-teal-900">
+                            <button @click="filters.priceRange = [0, priceMax()]; applyFilters()" class="hover:text-teal-900">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M6 18L18 6M6 6l12 12" />
@@ -176,14 +223,11 @@
             <template x-if="isLoading">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     <template x-for="i in 6">
-                        <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 animate-pulse">
-                            <div class="h-48 bg-gray-200"></div>
-                            <div class="p-5 space-y-3">
-                                <div class="h-3 bg-gray-200 rounded w-1/3"></div>
-                                <div class="h-5 bg-gray-200 rounded w-3/4"></div>
-                                <div class="h-4 bg-gray-200 rounded w-1/2"></div>
-                                <div class="h-10 bg-gray-200 rounded"></div>
-                            </div>
+                        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 animate-pulse p-5">
+                            <div class="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
+                            <div class="h-3 bg-gray-200 rounded w-1/3 mb-4"></div>
+                            <div class="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+                            <div class="h-3 bg-gray-200 rounded w-1/2"></div>
                         </div>
                     </template>
                 </div>
@@ -321,30 +365,29 @@
                             <h3 class="text-sm font-semibold text-gray-900 mb-4">PRICE RANGE</h3>
                             <div class="flex items-center gap-4 mb-4">
                                 <div class="flex-1">
-                                    <label class="text-xs text-gray-500">Min</label>
-                                    <input type="number" x-model.number="filters.priceRange[0]" min="0" max="15000"
+                                    <label class="text-xs text-gray-500">Min (₹)</label>
+                                    <input type="number" x-model.number="filters.priceRange[0]" min="0" :max="filters.priceRange[1]"
                                         class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500">
                                 </div>
                                 <span class="text-gray-400 pt-5">—</span>
                                 <div class="flex-1">
-                                    <label class="text-xs text-gray-500">Max</label>
-                                    <input type="number" x-model.number="filters.priceRange[1]" min="0" max="15000"
+                                    <label class="text-xs text-gray-500">Max (₹)</label>
+                                    <input type="number" x-model.number="filters.priceRange[1]" :min="filters.priceRange[0]" :max="priceMax()"
                                         class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500">
                                 </div>
                             </div>
                         </div>
 
                         <!-- Brands -->
-                        <div>
+                        <div x-show="availableFilters.brands.length > 0">
                             <h3 class="text-sm font-semibold text-gray-900 mb-4">BRANDS</h3>
                             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                <template
-                                    x-for="brand in ['Chanel', 'Dior', 'Tom Ford', 'Jo Malone', 'Gucci', 'YSL', 'Armani', 'Versace', 'Creed', 'Hermès']">
+                                <template x-for="brand in availableFilters.brands" :key="brand">
                                     <label
                                         class="flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-all text-sm"
                                         :class="filters.brands.includes(brand) ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 hover:border-gray-300'">
                                         <input type="checkbox" :checked="filters.brands.includes(brand)"
-                                            @change="toggleBrand(brand)" class="sr-only">
+                                            @change="toggleFilter('brands', brand)" class="sr-only">
                                         <span x-text="brand"></span>
                                     </label>
                                 </template>
@@ -352,10 +395,10 @@
                         </div>
 
                         <!-- Concentration -->
-                        <div>
+                        <div x-show="availableFilters.concentrations.length > 0">
                             <h3 class="text-sm font-semibold text-gray-900 mb-4">CONCENTRATION</h3>
                             <div class="flex flex-wrap gap-2">
-                                <template x-for="conc in ['EDP', 'EDT', 'Parfum', 'Cologne', 'Extrait']">
+                                <template x-for="conc in availableFilters.concentrations" :key="conc">
                                     <label
                                         class="flex items-center gap-2 px-4 py-2 border rounded-full cursor-pointer transition-all text-sm"
                                         :class="filters.concentrations.includes(conc) ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 hover:border-gray-300'">
@@ -368,10 +411,10 @@
                         </div>
 
                         <!-- Gender -->
-                        <div>
+                        <div x-show="availableFilters.genders.length > 0">
                             <h3 class="text-sm font-semibold text-gray-900 mb-4">GENDER</h3>
                             <div class="flex flex-wrap gap-2">
-                                <template x-for="gender in ['Male', 'Female', 'Unisex']">
+                                <template x-for="gender in availableFilters.genders" :key="gender">
                                     <label
                                         class="flex items-center gap-2 px-4 py-2 border rounded-full cursor-pointer transition-all text-sm"
                                         :class="filters.genders.includes(gender) ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 hover:border-gray-300'">
@@ -383,27 +426,11 @@
                             </div>
                         </div>
 
-                        <!-- Season -->
-                        <div>
-                            <h3 class="text-sm font-semibold text-gray-900 mb-4">SEASON</h3>
-                            <div class="flex flex-wrap gap-2">
-                                <template x-for="season in ['Spring', 'Summer', 'Fall', 'Winter']">
-                                    <label
-                                        class="flex items-center gap-2 px-4 py-2 border rounded-full cursor-pointer transition-all text-sm"
-                                        :class="filters.seasons.includes(season) ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 hover:border-gray-300'">
-                                        <input type="checkbox" :checked="filters.seasons.includes(season)"
-                                            @change="toggleSeason(season)" class="sr-only">
-                                        <span x-text="season"></span>
-                                    </label>
-                                </template>
-                            </div>
-                        </div>
-
                         <!-- Size -->
-                        <div>
+                        <div x-show="availableFilters.sizes.length > 0">
                             <h3 class="text-sm font-semibold text-gray-900 mb-4">SIZE</h3>
                             <div class="flex flex-wrap gap-2">
-                                <template x-for="size in [30, 50, 100, 150, 200]">
+                                <template x-for="size in availableFilters.sizes" :key="size">
                                     <label
                                         class="flex items-center gap-2 px-4 py-2 border rounded-full cursor-pointer transition-all text-sm"
                                         :class="filters.sizes.includes(size) ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 hover:border-gray-300'">
@@ -442,13 +469,20 @@
                 currentPage: 1,
                 searchTerm: '',
                 showFiltersModal: false,
-                filters: {
-                    priceRange: [0, 15000],
+                // Dynamic filter options from API
+                availableFilters: {
                     brands: [],
                     concentrations: [],
                     genders: [],
                     sizes: [],
-                    seasons: [],
+                    price_range: { min: 0, max: 50000 },
+                },
+                filters: {
+                    priceRange: [0, 50000],
+                    brands: [],
+                    concentrations: [],
+                    genders: [],
+                    sizes: [],
                     sortBy: 'price_low_to_high'
                 },
                 sortLabels: {
@@ -461,7 +495,28 @@
                 },
 
                 init() {
+                    this.loadFiltersFromUrl();
+                    this.fetchFilters();
                     this.fetchPerfumes();
+                },
+
+                // Load available filter options from the API
+                fetchFilters() {
+                    fetch('/api/v1/perfumes/filters')
+                        .then(r => r.json())
+                        .then(data => {
+                            this.availableFilters = data.data;
+                            // Set price range max from real data if user hasn't customised it
+                            const apiMax = data.data.price_range?.max || 50000;
+                            const apiMin = data.data.price_range?.min || 0;
+                            // Only update bounds if they're still at defaults (not overridden by URL)
+                            if (this.filters.priceRange[1] === 50000) {
+                                this.filters.priceRange[1] = apiMax;
+                            }
+                            // Store the real max for "is filter active?" checks
+                            this.availableFilters.price_range = { min: apiMin, max: apiMax };
+                        })
+                        .catch(() => {}); // Non-critical — filters still work with empty options
                 },
 
                 fetchPerfumes(page = 1) {
@@ -473,8 +528,13 @@
                     if (this.searchTerm.trim() !== '') {
                         params.append('search', this.searchTerm.trim());
                     }
-                    params.append('min_price', this.filters.priceRange[0]);
-                    params.append('max_price', this.filters.priceRange[1]);
+                    // Only send price filters when user has actually changed them
+                    if (this.filters.priceRange[0] > 0) {
+                        params.append('min_price', this.filters.priceRange[0]);
+                    }
+                    if (this.filters.priceRange[1] < this.priceMax()) {
+                        params.append('max_price', this.filters.priceRange[1]);
+                    }
                     params.append('sort', this.filters.sortBy);
 
                     if (this.filters.brands.length > 0) {
@@ -489,9 +549,6 @@
                     if (this.filters.sizes.length > 0) {
                         params.append('sizes', this.filters.sizes.join(','));
                     }
-                    if (this.filters.seasons.length > 0) {
-                        this.filters.seasons.forEach(season => params.append('seasons[]', season));
-                    }
 
                     fetch(`/api/v1/perfumes?${params.toString()}`)
                         .then(response => {
@@ -503,6 +560,7 @@
                             this.pagination = data.meta || {};
                             this.currentPage = data.meta?.current_page || 1;
                             this.isLoading = false;
+                            this.syncUrlFromFilters();
                         })
                         .catch(err => {
                             this.error = err.message;
@@ -510,28 +568,43 @@
                         });
                 },
 
+                // --- URL Sync ---
+                loadFiltersFromUrl() {
+                    const params = new URLSearchParams(window.location.search);
+                    if (params.has('search')) this.searchTerm = params.get('search');
+                    if (params.has('brands')) this.filters.brands = params.get('brands').split(',');
+                    if (params.has('concentrations')) this.filters.concentrations = params.get('concentrations').split(',');
+                    if (params.has('genders')) this.filters.genders = params.get('genders').split(',');
+                    if (params.has('sizes')) this.filters.sizes = params.get('sizes').split(',').map(Number);
+                    if (params.has('min_price')) this.filters.priceRange[0] = Number(params.get('min_price'));
+                    if (params.has('max_price')) this.filters.priceRange[1] = Number(params.get('max_price'));
+                    if (params.has('sort')) this.filters.sortBy = params.get('sort');
+                    if (params.has('page')) this.currentPage = Number(params.get('page'));
+                },
+
+                syncUrlFromFilters() {
+                    const params = new URLSearchParams();
+                    if (this.searchTerm.trim()) params.set('search', this.searchTerm.trim());
+                    if (this.filters.brands.length) params.set('brands', this.filters.brands.join(','));
+                    if (this.filters.concentrations.length) params.set('concentrations', this.filters.concentrations.join(','));
+                    if (this.filters.genders.length) params.set('genders', this.filters.genders.join(','));
+                    if (this.filters.sizes.length) params.set('sizes', this.filters.sizes.join(','));
+                    if (this.filters.priceRange[0] > 0) params.set('min_price', this.filters.priceRange[0]);
+                    if (this.filters.priceRange[1] < this.priceMax()) params.set('max_price', this.filters.priceRange[1]);
+                    if (this.filters.sortBy !== 'price_low_to_high') params.set('sort', this.filters.sortBy);
+                    if (this.currentPage > 1) params.set('page', this.currentPage);
+                    const qs = params.toString();
+                    const url = window.location.pathname + (qs ? '?' + qs : '');
+                    window.history.replaceState({}, '', url);
+                },
+
+                // --- Helpers ---
+                priceMax() {
+                    return this.availableFilters.price_range?.max || 50000;
+                },
+
                 applyFilters() {
                     this.fetchPerfumes(1);
-                },
-
-                toggleBrand(brand) {
-                    const index = this.filters.brands.indexOf(brand);
-                    if (index > -1) {
-                        this.filters.brands.splice(index, 1);
-                    } else {
-                        this.filters.brands.push(brand);
-                    }
-                    this.applyFilters();
-                },
-
-                toggleSeason(season) {
-                    const index = this.filters.seasons.indexOf(season);
-                    if (index > -1) {
-                        this.filters.seasons.splice(index, 1);
-                    } else {
-                        this.filters.seasons.push(season);
-                    }
-                    this.applyFilters();
                 },
 
                 toggleFilter(filterName, value) {
@@ -547,12 +620,11 @@
 
                 clearFilters() {
                     this.filters = {
-                        priceRange: [0, 15000],
+                        priceRange: [0, this.priceMax()],
                         brands: [],
                         concentrations: [],
                         genders: [],
                         sizes: [],
-                        seasons: [],
                         sortBy: 'price_low_to_high'
                     };
                     this.searchTerm = '';
@@ -562,11 +634,19 @@
                 hasActiveFilters() {
                     return this.filters.brands.length > 0 ||
                         this.filters.priceRange[0] > 0 ||
-                        this.filters.priceRange[1] < 15000 ||
+                        this.filters.priceRange[1] < this.priceMax() ||
                         this.filters.concentrations.length > 0 ||
                         this.filters.genders.length > 0 ||
-                        this.filters.sizes.length > 0 ||
-                        this.filters.seasons.length > 0;
+                        this.filters.sizes.length > 0;
+                },
+
+                activeFilterCount() {
+                    let count = this.filters.brands.length +
+                        this.filters.concentrations.length +
+                        this.filters.genders.length +
+                        this.filters.sizes.length;
+                    if (this.filters.priceRange[0] > 0 || this.filters.priceRange[1] < this.priceMax()) count++;
+                    return count;
                 },
 
                 paginationPages() {
