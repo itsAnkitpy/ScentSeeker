@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\StagingPerfume;
 use App\Services\DataIngestion\StagingProcessorService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -52,14 +51,9 @@ class ProcessStagingDataJob implements ShouldQueue
 
             // If a specific batch was processed and it's complete, perform deactivation
             if ($this->batchId && $result['processed_count'] > 0) {
-                // Check if batch is fully processed
-                $remainingInBatch = StagingPerfume::where('import_batch_id', $this->batchId)
-                    ->where('processing_status', 'new')
-                    ->count();
-                
-                if ($remainingInBatch === 0) {
-                    $stagingProcessorService->performBatchDeactivation($this->batchId);
-                } elseif ($result['processed_count'] === $this->limit) {
+                $deactivationResult = $stagingProcessorService->checkBatchCompletionAndDeactivate($this->batchId);
+
+                if ($deactivationResult === null && $result['processed_count'] === $this->limit) {
                     // More records to process, dispatch another job
                     Log::channel('ingestion')->info("More records to process, dispatching another job", [
                         'batch_id' => $this->batchId,

@@ -30,10 +30,7 @@ class StagingProcessorService
         $pricesUpdated = 0;
         $failedCount = 0;
         $now = Carbon::now();
-    
-        // To store all processed production price IDs for each seller-perfume combination in the batch
-        $batchProcessedPriceIds = [];
-    
+
         $query = StagingPerfume::where('processing_status', 'new')
                     ->where('validation_status', 'pending'); // Or a 'validated' status if you add a separate validation step
 
@@ -159,9 +156,6 @@ class StagingProcessorService
                 }
                 $stagedPerfume->matched_production_perfume_id = $perfume->id;
 
-                // Initialize list to track processed production price IDs for this perfume/seller combination
-                $processedProductionPriceIds = [];
-
                 // 3. Process Staging Prices for this Perfume
                 foreach ($stagedPerfume->stagingPrices as $stagedPrice) {
                     if (empty($stagedPrice->price_raw) || empty($stagedPrice->currency_raw) || empty($stagedPerfume->size_raw) /* size from perfume for now */) {
@@ -189,7 +183,7 @@ class StagingProcessorService
                         'currency' => $stagedPrice->currency_raw,
                         'stock_status' => $stagedPrice->availability_raw ?? 'In Stock',
                         'product_url' => $stagedPerfume->seller_product_url_raw, // Assuming URL is on perfume level for now
-                        'size_ml' => (int) filter_var($stagedPerfume->size_raw, FILTER_SANITIZE_NUMBER_INT), // Extract number from "100ml"
+                        'size_ml' => (int) (preg_match('/(\d+(?:\.\d+)?)/', $stagedPerfume->size_raw, $m) ? $m[1] : 0), // Extract number from "100ml"
                         'item_type' => $stagedPrice->raw_data_payload['item_type'] ?? 'Full Bottle', // Assuming item_type is in raw_data_payload of price
                         // 'offer_details' - map if available
                         // 'last_updated' will be set by updateOrCreate or during creation
@@ -219,17 +213,6 @@ class StagingProcessorService
                         Log::channel('ingestion')->info('Production price created.', ['price_id' => $newOrUpdatedPrice->id, 'perfume_id' => $perfume->id, 'seller_id' => $sellerId, 'size_ml' => $priceData['size_ml'], 'item_type' => $priceData['item_type'], 'staged_perfume_id' => $stagedPerfume->id, 'staged_price_id' => $stagedPrice->id, 'batch_id' => $stagedPerfume->import_batch_id]);
                         $pricesCreated++;
                     }
-                    $processedProductionPriceIds[] = $newOrUpdatedPrice->id; // Track processed price ID for current StagingPerfume
-                
-                    // Accumulate into batch-wide tracker
-                    if (!isset($batchProcessedPriceIds[$sellerId])) {
-                        $batchProcessedPriceIds[$sellerId] = [];
-                    }
-                    if (!isset($batchProcessedPriceIds[$sellerId][$perfume->id])) {
-                        $batchProcessedPriceIds[$sellerId][$perfume->id] = [];
-                    }
-                    $batchProcessedPriceIds[$sellerId][$perfume->id][] = $newOrUpdatedPrice->id;
-                    
                     $stagedPrice->matched_production_perfume_id = $perfume->id;
                     $stagedPrice->matched_production_price_id = $newOrUpdatedPrice->id;
                     $stagedPrice->processing_status = 'processed';
@@ -289,10 +272,6 @@ class StagingProcessorService
     public function processSingleRecord(StagingPerfume $record): array
     {
         $record->loadMissing('stagingPrices');
-
-        // Temporarily override: query just this one record
-        $originalStatus = $record->processing_status;
-        $originalValidation = $record->validation_status;
 
         // Ensure it's eligible
         if ($record->processing_status !== 'new' || $record->validation_status !== 'pending') {
@@ -403,7 +382,7 @@ class StagingProcessorService
                     'currency' => $stagedPrice->currency_raw,
                     'stock_status' => $stagedPrice->availability_raw ?? 'In Stock',
                     'product_url' => $record->seller_product_url_raw,
-                    'size_ml' => (int) filter_var($record->size_raw, FILTER_SANITIZE_NUMBER_INT),
+                    'size_ml' => (int) (preg_match('/(\d+(?:\.\d+)?)/', $record->size_raw, $m) ? $m[1] : 0),
                     'item_type' => $stagedPrice->raw_data_payload['item_type'] ?? 'Full Bottle',
                 ];
 
@@ -464,6 +443,24 @@ class StagingProcessorService
     }
 
     /**
+     * Check if a batch is fully processed and perform deactivation if so.
+     *
+     * @return array|null Deactivation result if batch was complete, null otherwise.
+     */
+    public function checkBatchCompletionAndDeactivate(string $importBatchId): ?array
+    {
+        $remaining = StagingPerfume::where('import_batch_id', $importBatchId)
+            ->where('processing_status', 'new')
+            ->count();
+
+        if ($remaining === 0) {
+            return $this->performBatchDeactivation($importBatchId);
+        }
+
+        return null;
+    }
+
+    /**
      * Performs deactivation of prices for a fully processed batch.
      * It identifies production prices that were part of a previous import from this seller for a perfume,
      * but are not present in the current (fully processed) batch, and marks them as 'Out of Stock'.
@@ -496,6 +493,14 @@ class StagingProcessorService
             // A more robust approach might involve checking StagingPerfume entries for the batch to get seller/perfume combos.
         }
 
+        // Pre-load all sellers referenced in this batch to avoid N+1 queries
+        $sellerCodes = $processedStagingPrices
+            ->pluck('stagingPerfume.seller_code_raw')
+            ->filter()
+            ->unique()
+            ->values();
+        $sellersByCode = Seller::whereIn('code', $sellerCodes)->pluck('id', 'code');
+
         // Group by seller, then by production perfume ID
         $liveProductionPriceIdsBySellerPerfume = [];
         $sellerPerfumeCombinationsInBatch = [];
@@ -504,13 +509,12 @@ class StagingProcessorService
             if ($sp->stagingPerfume && $sp->stagingPerfume->seller_code_raw && $sp->stagingPerfume->matched_production_perfume_id) {
                 $sellerCode = $sp->stagingPerfume->seller_code_raw;
                 $prodPerfumeId = $sp->stagingPerfume->matched_production_perfume_id;
-                
-                $seller = Seller::where('code', $sellerCode)->first(); // Cache this if performance becomes an issue
-                if (!$seller) {
+
+                $sellerId = $sellersByCode[$sellerCode] ?? null;
+                if (!$sellerId) {
                     Log::channel('ingestion')->warning("Seller not found during deactivation for seller_code_raw.", ['seller_code_raw' => $sellerCode, 'batch_id' => $importBatchId]);
                     continue;
                 }
-                $sellerId = $seller->id;
 
                 if (!isset($liveProductionPriceIdsBySellerPerfume[$sellerId])) {
                     $liveProductionPriceIdsBySellerPerfume[$sellerId] = [];

@@ -20,6 +20,20 @@ class Seller extends Model
         'type',
     ];
 
+    protected $casts = [
+        'rating' => 'decimal:1',
+    ];
+
+    /**
+     * Set the rating attribute, clamping to 0.0–5.0 range.
+     */
+    protected function setRatingAttribute(?float $value): void
+    {
+        $this->attributes['rating'] = $value !== null
+            ? max(0, min(5.0, $value))
+            : null;
+    }
+
     /**
      * Get the prices for the seller.
      */

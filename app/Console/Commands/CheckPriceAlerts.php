@@ -37,8 +37,9 @@ class CheckPriceAlerts extends Command
         $triggered = 0;
 
         foreach ($alerts as $alert) {
-            // Get current lowest price for this perfume (filtered by size if specified)
-            $priceQuery = Price::where('perfume_id', $alert->perfume_id);
+            // Get current lowest price for this perfume (only in-stock, filtered by size if specified)
+            $priceQuery = Price::where('perfume_id', $alert->perfume_id)
+                ->where('stock_status', 'In Stock');
             if ($alert->size_ml) {
                 $priceQuery->where('size_ml', $alert->size_ml);
             }

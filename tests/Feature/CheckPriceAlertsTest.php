@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Feature;
 
 use App\Models\Perfume;
 use App\Models\Price;
@@ -29,6 +29,7 @@ class CheckPriceAlertsTest extends TestCase
             'perfume_id' => $perfume->id,
             'seller_id' => $seller->id,
             'price' => 5000, // Current price
+            'stock_status' => 'In Stock',
         ]);
 
         // Create alert with target higher than current price - explicitly set all fields
@@ -66,6 +67,7 @@ class CheckPriceAlertsTest extends TestCase
             'perfume_id' => $perfume->id,
             'seller_id' => $seller->id,
             'price' => 4500,
+            'stock_status' => 'In Stock',
         ]);
 
         PriceAlert::create([
@@ -95,6 +97,7 @@ class CheckPriceAlertsTest extends TestCase
             'perfume_id' => $perfume->id,
             'seller_id' => $seller->id,
             'price' => 4500,
+            'stock_status' => 'In Stock',
         ]);
 
         PriceAlert::create([
@@ -124,6 +127,7 @@ class CheckPriceAlertsTest extends TestCase
             'perfume_id' => $perfume->id,
             'seller_id' => $seller->id,
             'price' => 4500,
+            'stock_status' => 'In Stock',
         ]);
 
         PriceAlert::create([
@@ -153,6 +157,7 @@ class CheckPriceAlertsTest extends TestCase
             'perfume_id' => $perfume->id,
             'seller_id' => $seller->id,
             'price' => 7000, // Current price is above target
+            'stock_status' => 'In Stock',
         ]);
 
         $alert = PriceAlert::create([
@@ -174,6 +179,41 @@ class CheckPriceAlertsTest extends TestCase
         Notification::assertNotSentTo($user, PriceDropNotification::class);
     }
 
+    public function test_out_of_stock_prices_are_ignored(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create();
+        $perfume = Perfume::factory()->create();
+        $seller = Seller::factory()->create();
+
+        // Create a price below target but out of stock
+        Price::factory()->create([
+            'perfume_id' => $perfume->id,
+            'seller_id' => $seller->id,
+            'price' => 3000,
+            'stock_status' => 'Out of Stock',
+        ]);
+
+        $alert = PriceAlert::create([
+            'user_id' => $user->id,
+            'perfume_id' => $perfume->id,
+            'target_price' => 5000,
+            'current_lowest_price' => 8000,
+            'is_active' => true,
+            'triggered_at' => null,
+            'notification_sent_at' => null,
+        ]);
+
+        $this->artisan('price-alerts:check');
+
+        $alert->refresh();
+
+        // Should NOT trigger because the only price is out of stock
+        $this->assertNull($alert->triggered_at);
+        Notification::assertNotSentTo($user, PriceDropNotification::class);
+    }
+
     public function test_size_specific_alert_only_checks_matching_size_prices(): void
     {
         Notification::fake();
@@ -188,6 +228,7 @@ class CheckPriceAlertsTest extends TestCase
             'seller_id' => $seller->id,
             'price' => 3000,
             'size_ml' => 50,
+            'stock_status' => 'In Stock',
         ]);
 
         // Create 100ml price at 8000 (above target)
@@ -196,6 +237,7 @@ class CheckPriceAlertsTest extends TestCase
             'seller_id' => $seller->id,
             'price' => 8000,
             'size_ml' => 100,
+            'stock_status' => 'In Stock',
         ]);
 
         // Alert specifically for 100ml
