@@ -7,6 +7,7 @@
             wishlists: [],
             selectedWishlist: null,
             isLoading: true,
+            error: null,
             showCreateModal: false,
             newWishlistName: '',
             authToken: localStorage.getItem('auth_token'),
@@ -17,17 +18,19 @@
                     return;
                 }
                 this.isLoading = true;
+                this.error = null;
                 try {
                     const res = await fetch('/api/v1/wishlists', {
                         headers: { 'Authorization': `Bearer ${this.authToken}` }
                     });
+                    if (!res.ok) throw new Error('Failed to load wishlists');
                     const data = await res.json();
                     this.wishlists = data.data || [];
                     if (this.wishlists.length > 0 && !this.selectedWishlist) {
                         this.selectWishlist(this.wishlists[0]);
                     }
                 } catch (e) {
-                    console.error(e);
+                    this.error = 'Failed to load wishlists. Please try again.';
                 }
                 this.isLoading = false;
             },
@@ -94,6 +97,14 @@
                 <p class="text-gray-600">Keep track of your favorite fragrances</p>
             </div>
 
+            <!-- Error State -->
+            <template x-if="!isLoading && error">
+                <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                    <p class="text-red-600 text-sm" x-text="error"></p>
+                    <button @click="fetchWishlists()" class="mt-2 text-sm text-red-700 font-semibold hover:underline">Try Again</button>
+                </div>
+            </template>
+
             <!-- Loading State -->
             <template x-if="isLoading">
                 <div class="flex justify-center py-20">
@@ -102,7 +113,7 @@
             </template>
 
             <!-- Empty State -->
-            <template x-if="!isLoading && wishlists.length === 0">
+            <template x-if="!isLoading && !error && wishlists.length === 0">
                 <div class="text-center py-20">
                     <div class="w-24 h-24 mx-auto mb-6 bg-teal-100 rounded-full flex items-center justify-center">
                         <svg class="w-12 h-12 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,7 +132,7 @@
             </template>
 
             <!-- Wishlists Content -->
-            <template x-if="!isLoading && wishlists.length > 0">
+            <template x-if="!isLoading && !error && wishlists.length > 0">
                 <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
                     <!-- Sidebar: List of Wishlists -->
                     <div class="lg:col-span-1">

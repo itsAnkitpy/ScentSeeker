@@ -65,6 +65,14 @@
             </div>
         </div>
 
+        <!-- Error Banner -->
+        <template x-if="error">
+            <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+                <p class="text-red-600 text-sm" x-text="error"></p>
+                <button @click="fetchData(localStorage.getItem('auth_token'))" class="text-sm text-red-700 font-semibold hover:underline ml-4">Retry</button>
+            </div>
+        </template>
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Price Alerts Feed -->
             <div class="bg-white/80 backdrop-blur-lg rounded-2xl border border-white/50 shadow-sm">
@@ -204,6 +212,7 @@
             return {
                 user: null,
                 loading: true,
+                error: null,
                 alerts: [],
                 wishlistItems: [],
                 stats: {
@@ -232,6 +241,7 @@
                 },
 
                 async fetchData(token) {
+                    this.error = null;
                     const headers = {
                         'Accept': 'application/json',
                         'Authorization': 'Bearer ' + token
@@ -276,7 +286,7 @@
                             window.location.href = '/login';
                             return;
                         }
-                        console.error('Dashboard fetch error:', e);
+                        this.error = 'Failed to load dashboard data. Please try again.';
                     } finally {
                         this.loading = false;
                     }

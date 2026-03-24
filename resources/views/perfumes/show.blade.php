@@ -10,6 +10,7 @@
         sizes: [],
         selectedSize: null,
         isLoading: true,
+        error: null,
         activeTab: 'sellers',
         authToken: localStorage.getItem('auth_token'),
         inWishlist: false,
@@ -41,6 +42,7 @@
 
         async fetchPrices() {
             this.isLoading = true;
+            this.error = null;
             try {
                 const res = await fetch('/api/v1/perfumes/{{ $perfume->id }}/prices?per_page=100');
                 if (res.ok) {
@@ -48,9 +50,11 @@
                     this.allPrices = data.data || [];
                 } else {
                     this.allPrices = [];
+                    this.error = 'Failed to load prices. Please try again.';
                 }
             } catch (e) {
                 this.allPrices = [];
+                this.error = 'Could not connect to server. Please check your connection.';
             }
             // Extract unique sizes
             this.sizes = [...new Set(this.allPrices.map(p => p.size_ml).filter(Boolean))].sort((a, b) => a - b);
@@ -341,7 +345,14 @@
                     </div>
                 </template>
 
-                <template x-if="!isLoading && prices.length > 0">
+                <template x-if="!isLoading && error">
+                    <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                        <p class="text-red-600 text-sm" x-text="error"></p>
+                        <button @click="fetchPrices()" class="mt-2 text-sm text-red-700 font-semibold hover:underline">Try Again</button>
+                    </div>
+                </template>
+
+                <template x-if="!isLoading && !error && prices.length > 0">
                     <div class="space-y-4">
                         <template x-for="(price, index) in prices.sort((a, b) => a.price - b.price)" :key="price.id">
                             <div class="flex items-center justify-between p-5 rounded-2xl border transition-all"
@@ -386,7 +397,7 @@
                     </div>
                 </template>
 
-                <template x-if="!isLoading && prices.length === 0">
+                <template x-if="!isLoading && !error && prices.length === 0">
                     <div class="text-center py-12 text-gray-500">
                         <p>No prices available<span x-show="selectedSize"> for <span x-text="selectedSize + 'ml'"></span></span>. Try a different size.</p>
                     </div>

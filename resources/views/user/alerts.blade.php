@@ -6,6 +6,7 @@
     <div class="min-h-screen bg-gradient-to-br from-teal-50 via-cyan-50 to-white py-12" x-data="{
                 alerts: [],
                 isLoading: true,
+                error: null,
                 authToken: localStorage.getItem('auth_token'),
 
                 async fetchAlerts() {
@@ -14,14 +15,16 @@
                         return;
                     }
                     this.isLoading = true;
+                    this.error = null;
                     try {
                         const res = await fetch('/api/v1/price-alerts', {
                             headers: { 'Authorization': `Bearer ${this.authToken}` }
                         });
+                        if (!res.ok) throw new Error('Failed to load alerts');
                         const data = await res.json();
                         this.alerts = data.data || [];
                     } catch (e) {
-                        console.error(e);
+                        this.error = 'Failed to load price alerts. Please try again.';
                     }
                     this.isLoading = false;
                 },
@@ -74,6 +77,14 @@
                 <p class="text-gray-600">Get notified when prices drop on your watched perfumes</p>
             </div>
 
+            <!-- Error State -->
+            <template x-if="!isLoading && error">
+                <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                    <p class="text-red-600 text-sm" x-text="error"></p>
+                    <button @click="fetchAlerts()" class="mt-2 text-sm text-red-700 font-semibold hover:underline">Try Again</button>
+                </div>
+            </template>
+
             <!-- Loading State -->
             <template x-if="isLoading">
                 <div class="flex justify-center py-20">
@@ -82,7 +93,7 @@
             </template>
 
             <!-- Empty State -->
-            <template x-if="!isLoading && alerts.length === 0">
+            <template x-if="!isLoading && !error && alerts.length === 0">
                 <div class="text-center py-20">
                     <div class="w-24 h-24 mx-auto mb-6 bg-yellow-100 rounded-full flex items-center justify-center">
                         <svg class="w-12 h-12 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -100,7 +111,7 @@
             </template>
 
             <!-- Alerts List -->
-            <template x-if="!isLoading && alerts.length > 0">
+            <template x-if="!isLoading && !error && alerts.length > 0">
                 <div class="space-y-4">
                     <template x-for="alert in alerts" :key="alert.id">
                         <div class="bg-white/90 backdrop-blur-xl rounded-2xl p-6 shadow-xl border-2" :class="{
