@@ -18,6 +18,7 @@ class Seller extends Model
         'rating',
         'contact_info',
         'type',
+        'onboarding_status',
     ];
 
     protected $casts = [
@@ -34,11 +35,13 @@ class Seller extends Model
             : null;
     }
 
-    /**
-     * Get the prices for the seller.
-     */
     public function prices(): HasMany
     {
         return $this->hasMany(Price::class);
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
     }
 }

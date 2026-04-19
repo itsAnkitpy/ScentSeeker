@@ -15,28 +15,34 @@ class SellerSeeder extends Seeder
     {
         Seller::create([
             'name' => 'FragranceNet India',
+            'code' => 'FRAGNET',
             'logo_url' => 'fragrancenet_logo.png',
             'website_url' => 'https://www.fragrancenet.com/india',
             'rating' => 4.5,
             'contact_info' => 'support@fragrancenet.com',
             'type' => 'official_retailer',
+            'onboarding_status' => 'active',
         ]);
 
         Seller::create([
             'name' => 'PerfumeParadise IN',
+            'code' => 'PERFPARA',
             'logo_url' => 'perfumeparadise_logo.png',
             'website_url' => 'https://www.perfumeparadise.in',
             'rating' => 4.2,
             'contact_info' => 'contact@perfumeparadise.in',
             'type' => 'official_retailer',
+            'onboarding_status' => 'active',
         ]);
 
         Seller::create([
             'name' => 'ScentSeller1 (Reddit)',
+            'code' => 'SCENTSELL1',
             'website_url' => 'https://www.reddit.com/user/ScentSeller1',
             'rating' => 4.8,
             'contact_info' => 'PM on Reddit',
             'type' => 'reddit_seller',
+            'onboarding_status' => 'active',
         ]);
     }
 }

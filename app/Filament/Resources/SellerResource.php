@@ -4,13 +4,17 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\SellerResource\Pages;
 use App\Models\Seller;
+use App\Models\User;
+use App\Notifications\SellerWelcomeNotification;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 
 class SellerResource extends Resource
@@ -77,6 +81,13 @@ class SellerResource extends Resource
                             ->minValue(0)
                             ->maxValue(5)
                             ->step(0.1),
+                        Forms\Components\Select::make('onboarding_status')
+                            ->options([
+                                'new' => 'New',
+                                'active' => 'Active',
+                                'suspended' => 'Suspended',
+                            ])
+                            ->default('new'),
                         Forms\Components\Textarea::make('contact_info')
                             ->columnSpanFull(),
                     ])->columns(2),
@@ -156,6 +167,20 @@ class SellerResource extends Resource
                     ->counts('prices')
                     ->badge()
                     ->color('gray'),
+                Tables\Columns\IconColumn::make('has_portal_account')
+                    ->label('Portal')
+                    ->state(fn (Seller $record): bool => $record->users()->where('role', 'seller')->exists())
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle'),
+                Tables\Columns\TextColumn::make('onboarding_status')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'active' => 'success',
+                        'suspended' => 'danger',
+                        default => 'warning',
+                    })
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -171,6 +196,50 @@ class SellerResource extends Resource
                     ]),
             ])
             ->actions([
+                Tables\Actions\Action::make('createPortalAccount')
+                    ->label('Create Portal Account')
+                    ->icon('heroicon-o-user-plus')
+                    ->color('success')
+                    ->visible(fn (Seller $record): bool => ! $record->users()->where('role', 'seller')->exists())
+                    ->form([
+                        Forms\Components\TextInput::make('email')
+                            ->email()
+                            ->required()
+                            ->unique('users', 'email'),
+                        Forms\Components\TextInput::make('username')
+                            ->required()
+                            ->unique('users', 'username')
+                            ->maxLength(255),
+                    ])
+                    ->action(function (Seller $record, array $data): void {
+                        $user = User::create([
+                            'username' => $data['username'],
+                            'email' => $data['email'],
+                            'password' => bcrypt(Str::random(32)),
+                            'email_verified_at' => now(),
+                            'role' => 'seller',
+                            'seller_id' => $record->id,
+                        ]);
+
+                        $token = Password::createToken($user);
+                        $resetUrl = url("/reset-password/{$token}?" . http_build_query([
+                            'email' => $user->email,
+                            'redirect' => '/seller/login',
+                        ]));
+
+                        $user->notify(new SellerWelcomeNotification(
+                            sellerName: $record->name,
+                            resetUrl: $resetUrl,
+                        ));
+
+                        $record->update(['onboarding_status' => 'active']);
+
+                        Notification::make()
+                            ->title('Portal account created')
+                            ->body("Welcome email sent to {$data['email']} with a password reset link.")
+                            ->success()
+                            ->send();
+                    }),
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([

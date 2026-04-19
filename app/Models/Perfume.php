@@ -45,7 +45,7 @@ class Perfume extends Model
      */
     public function scopeByNameAndBrand($query, string $name, string $brand)
     {
-        return $query->where('name', 'like', $name)
-                     ->where('brand', 'like', $brand);
+        return $query->whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($name))])
+                     ->whereRaw('LOWER(TRIM(brand)) = ?', [strtolower(trim($brand))]);
     }
 }

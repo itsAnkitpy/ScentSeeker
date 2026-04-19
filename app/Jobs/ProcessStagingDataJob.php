@@ -14,19 +14,14 @@ class ProcessStagingDataJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * The number of times the job may be attempted.
-     *
-     * @var int
-     */
     public $tries = 3;
 
-    /**
-     * Create a new job instance.
-     */
+    public const MAX_DISPATCHES = 50;
+
     public function __construct(
         public ?string $batchId = null,
-        public int $limit = 100
+        public int $limit = 100,
+        public int $dispatchCount = 1
     ) {
         //
     }
@@ -54,16 +49,10 @@ class ProcessStagingDataJob implements ShouldQueue
                 $deactivationResult = $stagingProcessorService->checkBatchCompletionAndDeactivate($this->batchId);
 
                 if ($deactivationResult === null && $result['processed_count'] === $this->limit) {
-                    // More records to process, dispatch another job
-                    Log::channel('ingestion')->info("More records to process, dispatching another job", [
-                        'batch_id' => $this->batchId,
-                    ]);
-                    self::dispatch($this->batchId, $this->limit)->delay(now()->addSeconds(5));
+                    $this->dispatchNext();
                 }
             } elseif (!$this->batchId && $result['processed_count'] === $this->limit) {
-                // Processing all pending records, dispatch another job if more exist
-                Log::channel('ingestion')->info("More records to process, dispatching another job");
-                self::dispatch(null, $this->limit)->delay(now()->addSeconds(5));
+                $this->dispatchNext();
             }
 
         } catch (\Exception $e) {
@@ -74,5 +63,25 @@ class ProcessStagingDataJob implements ShouldQueue
             ]);
             throw $e;
         }
+    }
+
+    private function dispatchNext(): void
+    {
+        if ($this->dispatchCount >= self::MAX_DISPATCHES) {
+            Log::channel('ingestion')->warning("Circuit breaker: reached max dispatch limit", [
+                'batch_id' => $this->batchId,
+                'dispatch_count' => $this->dispatchCount,
+            ]);
+
+            return;
+        }
+
+        Log::channel('ingestion')->info("More records to process, dispatching another job", [
+            'batch_id' => $this->batchId,
+            'dispatch_count' => $this->dispatchCount + 1,
+        ]);
+
+        self::dispatch($this->batchId, $this->limit, $this->dispatchCount + 1)
+            ->delay(now()->addSeconds(5));
     }
 }

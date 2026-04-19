@@ -7,6 +7,7 @@
         class="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 flex items-center justify-center py-12 px-4">
         <div class="max-w-md w-full" x-data="{
                 formData: { token: '{{ $token }}', email: '{{ request()->email }}', password: '', password_confirmation: '' },
+                loginUrl: '{{ request()->query('redirect', '/login') }}',
                 message: '',
                 errors: {},
                 isLoading: false,
@@ -23,7 +24,7 @@
                         const data = await response.json();
                         if (response.ok) {
                             this.message = 'Password reset successfully! Redirecting to login...';
-                            setTimeout(() => window.location.href = '/login', 2000);
+                            setTimeout(() => window.location.href = this.loginUrl, 2000);
                         } else {
                             this.errors = data.errors || {};
                             this.message = data.message || 'Failed to reset password';
@@ -97,7 +98,7 @@
                     </button>
 
                     <div class="text-center">
-                        <a href="/login" class="text-pink-600 hover:text-pink-500 font-medium">← Back to Login</a>
+                        <a :href="loginUrl" class="text-pink-600 hover:text-pink-500 font-medium">← Back to Login</a>
                     </div>
                 </form>
             </div>

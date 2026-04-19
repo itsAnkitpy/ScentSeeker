@@ -6,6 +6,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -24,6 +25,8 @@ class User extends Authenticatable implements MustVerifyEmail, FilamentUser
         'username',
         'email',
         'password',
+        'role',
+        'seller_id',
     ];
 
     /**
@@ -50,12 +53,23 @@ class User extends Authenticatable implements MustVerifyEmail, FilamentUser
         ];
     }
 
-    /**
-     * Determine if the user can access the Filament admin panel.
-     */
+    public function seller(): BelongsTo
+    {
+        return $this->belongsTo(Seller::class);
+    }
+
+    public function isSeller(): bool
+    {
+        return $this->role === 'seller' && $this->seller_id !== null;
+    }
+
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->is_admin === true;
+        return match ($panel->getId()) {
+            'admin' => $this->is_admin === true,
+            'seller' => $this->isSeller(),
+            default => false,
+        };
     }
 
     /**
